@@ -54,6 +54,8 @@ class TopSkusResponse(BaseModel):
     target_date: date
     model_name: str
     model_version: str
+    limit: int
+    offset: int
     items: list[TopSkuPoint]
 
 

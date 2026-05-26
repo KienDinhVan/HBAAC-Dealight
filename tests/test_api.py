@@ -35,15 +35,16 @@ class FakeRepository:
             }
         ][:days]
 
-    def top_skus(self, target_date, limit):
-        return self.run, [
+    def top_skus(self, target_date, limit, offset=0):
+        items = [
             {
                 "item_code": "SKU-00001",
                 "target_date": target_date,
                 "horizon": 1,
                 "predicted_quantity": 2.5,
             }
-        ][:limit]
+        ]
+        return self.run, items[offset : offset + limit]
 
     def summary(self, target_date):
         return self.run, {

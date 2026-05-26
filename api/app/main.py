@@ -120,8 +120,9 @@ def get_top_skus(
     target_date: date,
     request: Request,
     limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
-    run, points = _repository(request).top_skus(target_date, limit)
+    run, points = _repository(request).top_skus(target_date, limit, offset)
     if run is None or not points:
         NOT_FOUND_COUNT.inc()
         raise HTTPException(
@@ -132,6 +133,8 @@ def get_top_skus(
         "target_date": target_date,
         "model_name": run["model_name"],
         "model_version": run["model_version"],
+        "limit": limit,
+        "offset": offset,
         "items": [_float_values(point, "predicted_quantity") for point in points],
     }
 

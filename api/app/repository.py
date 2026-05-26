@@ -63,7 +63,7 @@ class ForecastRepository:
                 return run, list(cursor.fetchall())
 
     def top_skus(
-        self, target_date: date, limit: int
+        self, target_date: date, limit: int, offset: int = 0
     ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
         run = self.latest_run()
         if run is None:
@@ -76,9 +76,9 @@ class ForecastRepository:
                     FROM serving.sku_forecast
                     WHERE run_id = %s AND target_date = %s
                     ORDER BY predicted_quantity DESC, item_code
-                    LIMIT %s
+                    LIMIT %s OFFSET %s
                     """,
-                    (run["run_id"], target_date, limit),
+                    (run["run_id"], target_date, limit, offset),
                 )
                 return run, list(cursor.fetchall())
 
