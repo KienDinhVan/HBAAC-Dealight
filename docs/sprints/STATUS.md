@@ -12,7 +12,7 @@ trước một sprint, nhưng không được tính là sprint hoàn thành khi 
 | Sprint 3 - Feature Engineering | Hoàn thành nghiệm thu chức năng 2026-05-26; rollout pending | Deliverables/evidence tại `SPRINT_03_FEATURE_ENGINEERING.md` |
 | Sprint 4 - Training & MLflow | Hoàn thành nghiệm thu chức năng 2026-05-26; rollout pending | Deliverables/evidence tại `SPRINT_04_TRAINING_MLFLOW.md` |
 | Sprint 5 - Batch Forecasting | Hoàn thành nghiệm thu chức năng 2026-05-27; rollout pending | Deliverables/evidence tại `SPRINT_05_BATCH_FORECASTING.md` |
-| Sprint 6 - FastAPI Serving | Chưa nghiệm thu | Có PoC API, nhưng phụ thuộc Sprint 5 chính thức |
+| Sprint 6 - FastAPI Serving | Hoàn thành nghiệm thu chức năng 2026-05-27; rollout pending | Deliverables/evidence tại `SPRINT_06_FASTAPI_SERVING.md` |
 | Sprint 7 - Monitoring & Drift | Chưa bắt đầu | Sprint 6 hoàn thành |
 | Sprint 8 - CI/CD, Deployment & UAT | Chưa nghiệm thu | Có Compose PoC local, chưa qua các sprint trước |
 

@@ -19,6 +19,11 @@ class Settings:
     forecast_run_id: str = "submission-final-public-048729-20250905"
     model_name: str = "twostage-seed-ensemble-mapoldnew"
     model_version: str = "public-0.48729"
+    cors_origins: tuple[str, ...] = ()
+
+
+def _parse_origins(raw: str) -> tuple[str, ...]:
+    return tuple(origin.strip() for origin in raw.split(",") if origin.strip())
 
 
 @lru_cache(maxsize=1)
@@ -35,4 +40,5 @@ def get_settings() -> Settings:
         forecast_run_id=os.getenv("FORECAST_RUN_ID", defaults.forecast_run_id),
         model_name=os.getenv("MODEL_NAME", defaults.model_name),
         model_version=os.getenv("MODEL_VERSION", defaults.model_version),
+        cors_origins=_parse_origins(os.getenv("CORS_ORIGINS", "")),
     )

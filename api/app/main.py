@@ -4,7 +4,8 @@ from datetime import date
 from time import perf_counter
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response, status
+from fastapi import FastAPI, HTTPException, Path, Query, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 from api.app.config import get_settings
@@ -17,6 +18,8 @@ from api.app.schemas import (
     TopSkusResponse,
     VersionResponse,
 )
+
+ITEM_CODE_PATTERN = r"^[A-Za-z0-9._\-]{1,64}$"
 
 REQUEST_COUNT = Counter(
     "http_requests_total",
@@ -42,6 +45,15 @@ app = FastAPI(
     description="Read-only API serving precomputed 56-day batch forecasts.",
 )
 app.state.repository = ForecastRepository(settings.database_url)
+
+if settings.cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.cors_origins),
+        allow_credentials=False,
+        allow_methods=["GET"],
+        allow_headers=["*"],
+    )
 
 
 def _repository(request: Request) -> ForecastRepository:
@@ -163,8 +175,8 @@ def get_summary(target_date: date, request: Request) -> dict[str, Any]:
 
 @app.get("/forecast/{item_code}", response_model=ForecastResponse)
 def get_forecast(
-    item_code: str,
     request: Request,
+    item_code: str = Path(pattern=ITEM_CODE_PATTERN),
     days: int = Query(default=56, ge=1, le=56),
     forecast_date: date | None = Query(default=None),
 ) -> dict[str, Any]:

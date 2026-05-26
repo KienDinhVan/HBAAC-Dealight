@@ -1,4 +1,4 @@
-.PHONY: setup lint test up down logs load-poc pipeline features train forecast smoke smoke-infra
+.PHONY: setup lint test up down logs load-poc pipeline features train forecast smoke smoke-infra load-test
 
 COMPOSE = docker compose --env-file .env -f infra/docker-compose.yml
 DATABASE_URL ?= postgresql://forecast:replace-with-a-strong-password@localhost:5432/sku_forecasting
@@ -49,3 +49,9 @@ smoke-infra: smoke
 	curl --fail http://localhost:$${MINIO_PORT:-9000}/minio/health/live
 	curl --fail http://localhost:$${PROMETHEUS_PORT:-9090}/-/ready
 	curl --fail http://localhost:$${GRAFANA_PORT:-3000}/api/health
+
+load-test:
+	docker run --rm --network=host \
+		-e API_URL=http://localhost:$${API_PORT:-8000} \
+		-v $(CURDIR)/tests/load:/scripts \
+		grafana/k6 run /scripts/forecast_k6.js
