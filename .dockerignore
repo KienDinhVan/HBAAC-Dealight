@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+data/raw
+data/processed
+data/artifacts/*
+!data/artifacts/submission_FINAL_twostage_top300_lb730_s7_b1200_seedens20_alpha0.575_keysku_cautious_mapoldnew_a0.05.csv
+!data/artifacts/submission_twostage_active_recent_top_profit_top300_a50_r56_lb730_s7_tc_sun0_eos0_b900_2025-09-05_alpha0.60_keysku_cautious.csv

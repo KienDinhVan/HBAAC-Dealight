@@ -26,4 +26,3 @@ def select_skus(
         filtered = ranked[ranked["days_since_last_sale"] <= max_days_since_last_sale]
         return filtered.head(top_n).index
     raise ValueError(f"Unknown SKU selection strategy: {strategy}")
-

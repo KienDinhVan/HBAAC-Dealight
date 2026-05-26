@@ -1,0 +1,250 @@
+name: sku-demand-forecasting
+
+x-airflow-common: &airflow-common
+  build:
+    context: ./airflow
+    dockerfile: Dockerfile
+  image: sku-demand-forecasting-airflow:2.10.5
+  restart: unless-stopped
+  working_dir: /opt/project
+  environment: &airflow-environment
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD_URLENCODED:-forecast-local-only}@postgres:5432/airflow
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY:-sprint1-local-only-secret-key}
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    AIRFLOW_CONN_POSTGRES_DEFAULT: postgresql://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD_URLENCODED:-forecast-local-only}@postgres:5432/${POSTGRES_DB:-sku_forecasting}
+    AIRFLOW_CONN_MINIO_DEFAULT: aws://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin}@?endpoint_url=http%3A%2F%2Fminio%3A9000
+    AIRFLOW_CONN_MLFLOW_TRACKING_URI: http://mlflow:5000
+    DATABASE_URL: postgresql://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD:-forecast-local-only}@postgres:5432/${POSTGRES_DB:-sku_forecasting}
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+    AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    SOURCE_GIT_COMMIT: ${SOURCE_GIT_COMMIT:-unavailable-in-runtime}
+    GIT_PYTHON_REFRESH: quiet
+    PYTHONPATH: /opt/project/src:/opt/project
+  volumes:
+    - ../dags:/opt/airflow/dags:ro
+    - airflow-logs:/opt/airflow/logs
+    - ../src:/opt/project/src:ro
+    - ../scripts:/opt/project/scripts:ro
+    - ../data/raw:/opt/project/data/raw:ro
+    - ../data/features:/opt/project/data/features
+    - ../feature_registry.yaml:/opt/project/feature_registry.yaml:ro
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sku_forecasting}
+      POSTGRES_USER: ${POSTGRES_USER:-forecast}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forecast-local-only}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forecast} -d ${POSTGRES_DB:-sku_forecasting}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres-init:
+    image: postgres:16-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-sku_forecasting}
+      POSTGRES_USER: ${POSTGRES_USER:-forecast}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forecast-local-only}
+    volumes:
+      - ./postgres/init-platform-databases.sh:/opt/platform/init-platform-databases.sh:ro
+      - ../scripts/init_db.sql:/opt/platform/init_db.sql:ro
+    command: ["sh", "/opt/platform/init-platform-databases.sh"]
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command: ["server", "/data", "--console-address", ":9001"]
+    volumes:
+      - minio-data:/data
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MLFLOW_BUCKET: ${MLFLOW_BUCKET:-mlflow}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        /usr/bin/mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        /usr/bin/mc mb --ignore-existing local/"$${MLFLOW_BUCKET}"
+
+  mlflow:
+    build:
+      context: ./mlflow
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    command:
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --backend-store-uri
+      - postgresql+psycopg2://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD_URLENCODED:-forecast-local-only}@postgres:5432/mlflow
+      - --default-artifact-root
+      - s3://${MLFLOW_BUCKET:-mlflow}/
+    ports:
+      - "127.0.0.1:${MLFLOW_PORT:-5000}:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  forecast-loader:
+    profiles: ["poc"]
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD:-forecast-local-only}@postgres:5432/${POSTGRES_DB:-sku_forecasting}
+      PRODUCTION_SUBMISSION_PATH: ${PRODUCTION_SUBMISSION_PATH:-data/artifacts/submission_FINAL_twostage_top300_lb730_s7_b1200_seedens20_alpha0.575_keysku_cautious_mapoldnew_a0.05.csv}
+      FORECAST_DATE: ${FORECAST_DATE:-2025-09-05}
+      FORECAST_RUN_ID: ${FORECAST_RUN_ID:-submission-final-public-048729-20250905}
+      MODEL_NAME: ${MODEL_NAME:-twostage-seed-ensemble-mapoldnew}
+      MODEL_VERSION: ${MODEL_VERSION:-public-0.48729}
+    command: ["python", "-m", "scripts.load_submission_forecast"]
+
+  forecast-api:
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD:-forecast-local-only}@postgres:5432/${POSTGRES_DB:-sku_forecasting}
+      SERVICE_NAME: sku-forecast-api
+      SERVICE_VERSION: "0.1.0"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  airflow-init:
+    <<: *airflow-common
+    restart: "no"
+    user: "0:0"
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/logs &&
+        airflow db migrate &&
+        (airflow users create
+        --username "${AIRFLOW_ADMIN_USER:-admin}"
+        --password "${AIRFLOW_ADMIN_PASSWORD:-admin}"
+        --firstname Sprint --lastname Admin --role Admin
+        --email admin@example.local || true) &&
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/logs
+
+  airflow-webserver:
+    <<: *airflow-common
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      mlflow:
+        condition: service_healthy
+    command: ["webserver"]
+    ports:
+      - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  airflow-scheduler:
+    <<: *airflow-common
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      mlflow:
+        condition: service_healthy
+    command: ["scheduler"]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    restart: unless-stopped
+    depends_on:
+      forecast-api:
+        condition: service_healthy
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+
+volumes:
+  postgres-data:
+  minio-data:
+  airflow-logs:
+  prometheus-data:
+  grafana-data:

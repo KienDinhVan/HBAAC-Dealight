@@ -5,13 +5,29 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "boto3==1.38.33",
+    "fastapi>=0.116.0",
     "lightgbm>=4.6.0",
     "matplotlib>=3.10.9",
+    "mlflow==2.22.1",
     "numpy>=2.4.5",
-    "pandas>=3.0.3",
+    "pandas>=2.2,<3",
     "polars>=1.40.1",
-    "pyarrow>=24.0.0",
+    "prometheus-client>=0.22.1",
+    "psycopg[binary]>=3.2.9",
+    "pyarrow>=19,<20",
     "scikit-learn>=1.8.0",
     "seaborn>=0.13.2",
     "tqdm>=4.67.3",
+    "uvicorn[standard]>=0.35.0",
 ]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8.4.1",
+    "ruff>=0.12.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "src"]

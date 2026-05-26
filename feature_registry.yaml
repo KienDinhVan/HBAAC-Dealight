@@ -1,0 +1,24 @@
+version: sprint-03-v1
+entity: item_code
+source: gold.daily_sku_sales
+training_frame:
+  key: [as_of_date, item_code, horizon]
+  target: target_quantity
+  horizon_range: [1, 56]
+features:
+  - name: lag_7
+    type: numeric
+    description: Quantity sold seven days before as_of_date.
+  - name: rolling_mean_28
+    type: numeric
+    description: Average quantity sold in the 28 days before as_of_date.
+  - name: sku_return_rate
+    type: numeric
+    description: Historical return share known at as_of_date.
+  - name: rolling_price_mean_28
+    type: numeric
+    description: Average known price during the preceding 28 days.
+leakage_policy:
+  historical_features: strictly_before_as_of_date
+  calendar_features: target_date_only
+  target: strictly_after_as_of_date

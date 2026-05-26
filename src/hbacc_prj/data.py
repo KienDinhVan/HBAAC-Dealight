@@ -29,7 +29,9 @@ def load_train(path: str | Path = "data/raw/train.csv") -> pd.DataFrame:
         low_memory=False,
     )
     df["ItemCode"] = df["ItemCode"].astype("string")
-    df["Quantity"] = pd.to_numeric(df["Quantity"], errors="coerce").fillna(0).astype("int64")
+    df["Quantity"] = (
+        pd.to_numeric(df["Quantity"], errors="coerce").fillna(0).astype("int64")
+    )
     df["SalesAmount"] = parse_vn_decimal(df["SalesAmount"]).fillna(0).astype("float64")
     df["Cost Amount"] = parse_vn_decimal(df["Cost Amount"]).fillna(0).astype("float64")
     df["UnitPrice_float"] = parse_vn_decimal(df["UnitPrice"])
@@ -68,7 +70,9 @@ def make_demand_matrix(
     target: str = "sales_qty",
 ) -> pd.DataFrame:
     if item_codes is None:
-        item_codes = pd.Index(sorted(daily["ItemCode"].astype(str).unique()), name="ItemCode")
+        item_codes = pd.Index(
+            sorted(daily["ItemCode"].astype(str).unique()), name="ItemCode"
+        )
     if dates is None:
         dates = pd.date_range(daily["Date"].min(), daily["Date"].max(), freq="D")
 
@@ -131,7 +135,9 @@ def make_sku_profile_from_daily(
     profile["days_since_last_sale"] = (
         columns.max() - pd.to_datetime(profile["last_sale_date"])
     ).dt.days
-    profile["days_since_last_sale"] = profile["days_since_last_sale"].fillna(9999).astype("int32")
+    profile["days_since_last_sale"] = (
+        profile["days_since_last_sale"].fillna(9999).astype("int32")
+    )
     return profile
 
 

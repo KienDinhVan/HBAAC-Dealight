@@ -8,6 +8,18 @@ Output mục tiêu của tài liệu này: tái hiện file submission
 data/artifacts/submission_twostage_active_recent_top_profit_top300_a50_r56_lb730_s7_tc_sun0_eos0_b900_2025-09-05_alpha0.60_keysku_cautious.csv
 ```
 
+## Lộ trình triển khai production
+
+Việc triển khai production đi theo thứ tự sprint trong
+[sku_demand_forecasting_sprint_plan.md](sku_demand_forecasting_sprint_plan.md).
+Trạng thái nghiệm thu được theo dõi tại
+[docs/sprints/STATUS.md](docs/sprints/STATUS.md); deliverable đầu tiên là
+[Sprint 0 - Project Kickoff & Planning](docs/sprints/SPRINT_00_KICKOFF.md).
+
+API/Docker Compose và loader submission hiện có là PoC kỹ thuật được dựng sớm
+để kiểm tra hướng batch-serving. Các thành phần này không đồng nghĩa Sprint
+5/6/8 đã nghiệm thu trước khi hoàn tất các gate Sprint 0 đến Sprint 4.
+
 ---
 
 ## 1. Cấu trúc dự án
@@ -148,4 +160,3 @@ Biến thể "cautious" giữ nguyên SKU-00002 (`alpha=0`) và pha 15% referenc
   - `postprocess_key_skus`: blend lại SKU-00002 / SKU-00003 với reference theo cùng weekday + factor tháng + xu hướng 56/112 ngày.
 
 ---
-

@@ -6,8 +6,12 @@ import pandas as pd
 from hbacc_prj.metrics import wrmsse
 
 
-def forecast_zero(train_y: pd.DataFrame, horizon_dates: pd.DatetimeIndex) -> pd.DataFrame:
-    return pd.DataFrame(0.0, index=train_y.index, columns=horizon_dates, dtype="float32")
+def forecast_zero(
+    train_y: pd.DataFrame, horizon_dates: pd.DatetimeIndex
+) -> pd.DataFrame:
+    return pd.DataFrame(
+        0.0, index=train_y.index, columns=horizon_dates, dtype="float32"
+    )
 
 
 def forecast_recent_mean(
@@ -99,29 +103,39 @@ def evaluate_baselines(
     last_date = pd.DatetimeIndex(y.columns).max()
     rows = []
     for fold_idx in range(n_folds):
-        train_end = last_date - pd.Timedelta(days=horizon + step * (n_folds - 1 - fold_idx))
-        valid_dates = pd.date_range(train_end + pd.Timedelta(days=1), periods=horizon, freq="D")
+        train_end = last_date - pd.Timedelta(
+            days=horizon + step * (n_folds - 1 - fold_idx)
+        )
+        valid_dates = pd.date_range(
+            train_end + pd.Timedelta(days=1), periods=horizon, freq="D"
+        )
         train_y = y.loc[:, y.columns <= train_end]
         actual = y.loc[:, valid_dates]
         weights = sku_weights
         if daily is not None:
             from hbacc_prj.data import make_sku_profile_from_daily
 
-            weights = make_sku_profile_from_daily(daily, y, as_of=train_end)["profit_weight"]
+            weights = make_sku_profile_from_daily(daily, y, as_of=train_end)[
+                "profit_weight"
+            ]
         forecasts = {
             "zero": forecast_zero(train_y, valid_dates),
             "mean_28": forecast_recent_mean(train_y, valid_dates, 28),
             "mean_56": forecast_recent_mean(train_y, valid_dates, 56),
             "median_56": forecast_recent_median(train_y, valid_dates, 56),
             "same_weekday_8w": forecast_same_weekday_mean(train_y, valid_dates, 8),
-            "conservative_sparse": forecast_conservative_sparse(train_y, valid_dates, 56),
+            "conservative_sparse": forecast_conservative_sparse(
+                train_y, valid_dates, 56
+            ),
         }
         forecasts["blend_mean_weekday"] = forecast_blend(
             forecasts, {"mean_28": 0.45, "mean_56": 0.25, "same_weekday_8w": 0.30}
         )
         for name, forecast in forecasts.items():
             score_56, _ = wrmsse(actual, forecast, train_y, weights)
-            score_28, _ = wrmsse(actual.iloc[:, :28], forecast.iloc[:, :28], train_y, weights)
+            score_28, _ = wrmsse(
+                actual.iloc[:, :28], forecast.iloc[:, :28], train_y, weights
+            )
             rows.append(
                 {
                     "fold": fold_idx + 1,

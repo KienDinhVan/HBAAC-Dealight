@@ -19,7 +19,9 @@ def rmsse_denominator(
     values = train_y.to_numpy(dtype="float64", copy=False)
     n_rows, n_cols = values.shape
     if n_cols < 2:
-        return pd.Series(np.full(n_rows, floor), index=train_y.index, name="rmsse_denom")
+        return pd.Series(
+            np.full(n_rows, floor), index=train_y.index, name="rmsse_denom"
+        )
 
     nonzero = values > 0
     has_any = nonzero.any(axis=1)
@@ -64,4 +66,3 @@ def wrmsse(
         }
     )
     return float(score_by_sku["weighted_rmsse"].sum()), score_by_sku
-

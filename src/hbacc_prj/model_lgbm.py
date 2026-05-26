@@ -56,7 +56,9 @@ def selected_skus(profile: pd.DataFrame, cfg: LGBMConfig) -> pd.Index:
     )
 
 
-def load_profile_for_date(y: pd.DataFrame, as_of: pd.Timestamp, cfg: LGBMConfig) -> pd.DataFrame:
+def load_profile_for_date(
+    y: pd.DataFrame, as_of: pd.Timestamp, cfg: LGBMConfig
+) -> pd.DataFrame:
     if not cfg.time_consistent_profile:
         return pd.read_pickle("data/artifacts/sku_profile.pkl")
 
@@ -121,26 +123,33 @@ def build_direct_dataset(
         364,
         dates.searchsorted(min_origin_date),
     )
-    origin_positions = list(range(min_origin_pos, max_origin_pos + 1, cfg.origin_stride))
+    origin_positions = list(
+        range(min_origin_pos, max_origin_pos + 1, cfg.origin_stride)
+    )
 
     nonzero = values > 0
     has_any = nonzero.any(axis=1)
     first_sale_pos = np.where(has_any, nonzero.argmax(axis=1), len(dates))
 
-    static = profile.loc[item_codes, [
-        "profit_weight",
-        "zero_ratio",
-        "active_days",
-        "avg_daily_qty",
-        "avg_qty_when_active",
-        "return_ratio",
-    ]].reset_index(drop=True)
+    static = profile.loc[
+        item_codes,
+        [
+            "profit_weight",
+            "zero_ratio",
+            "active_days",
+            "avg_daily_qty",
+            "avg_qty_when_active",
+            "return_ratio",
+        ],
+    ].reset_index(drop=True)
     item_id = np.arange(len(item_codes), dtype="int32")
     rows = []
     targets = []
     weights = []
     sku_weight = profile.loc[item_codes, "profit_weight"].to_numpy(dtype="float32")
-    denom = rmsse_denominator(y.loc[item_codes, dates <= train_end]).to_numpy(dtype="float32")
+    denom = rmsse_denominator(y.loc[item_codes, dates <= train_end]).to_numpy(
+        dtype="float32"
+    )
     sample_weight = sku_weight / np.maximum(denom, 1e-9)
     sample_weight = sample_weight / np.mean(sample_weight[sample_weight > 0])
 
@@ -167,12 +176,20 @@ def build_direct_dataset(
                 for name, feature_values in base_features.items()
             }
         )
-        target_dates = pd.DatetimeIndex([dates[origin_pos + h - 1] for h in valid_horizons])
+        target_dates = pd.DatetimeIndex(
+            [dates[origin_pos + h - 1] for h in valid_horizons]
+        )
         frame["item_id"] = np.tile(item_id, n_horizons)
         frame["horizon"] = np.repeat(valid_horizons, n_items).astype("int16")
-        frame["target_dow"] = np.repeat(target_dates.dayofweek.to_numpy(), n_items).astype("int16")
-        frame["target_day"] = np.repeat(target_dates.day.to_numpy(), n_items).astype("int16")
-        frame["target_month"] = np.repeat(target_dates.month.to_numpy(), n_items).astype("int16")
+        frame["target_dow"] = np.repeat(
+            target_dates.dayofweek.to_numpy(), n_items
+        ).astype("int16")
+        frame["target_day"] = np.repeat(target_dates.day.to_numpy(), n_items).astype(
+            "int16"
+        )
+        frame["target_month"] = np.repeat(
+            target_dates.month.to_numpy(), n_items
+        ).astype("int16")
         frame["target_week"] = np.repeat(
             target_dates.isocalendar().week.to_numpy(dtype="int16"), n_items
         )
@@ -183,7 +200,9 @@ def build_direct_dataset(
             ],
             axis=1,
         )
-        target_matrix = np.vstack([values[:, origin_pos + h - 1] for h in valid_horizons])
+        target_matrix = np.vstack(
+            [values[:, origin_pos + h - 1] for h in valid_horizons]
+        )
         target_series = pd.Series(target_matrix.reshape(-1), dtype="float32")
         weight_series = pd.Series(np.tile(sample_weight, n_horizons), dtype="float32")
         if filter_inactive:
@@ -220,14 +239,17 @@ def build_forecast_features(
         origin_pos,
         feature_date=train_end + pd.Timedelta(days=1),
     )
-    static = profile.loc[item_codes, [
-        "profit_weight",
-        "zero_ratio",
-        "active_days",
-        "avg_daily_qty",
-        "avg_qty_when_active",
-        "return_ratio",
-    ]].reset_index(drop=True)
+    static = profile.loc[
+        item_codes,
+        [
+            "profit_weight",
+            "zero_ratio",
+            "active_days",
+            "avg_daily_qty",
+            "avg_qty_when_active",
+            "return_ratio",
+        ],
+    ].reset_index(drop=True)
     item_id = np.arange(len(item_codes), dtype="int32")
     rows = []
     for horizon, target_date in enumerate(horizon_dates, start=1):
@@ -247,7 +269,9 @@ def train_and_evaluate(cfg: LGBMConfig = LGBMConfig()) -> dict[str, float | int 
     artifact_dir = Path("data/artifacts")
     y = pd.read_pickle("data/processed/daily_demand_matrix.pkl")
     train_end = pd.Timestamp(cfg.valid_train_end)
-    valid_dates = pd.date_range(train_end + pd.Timedelta(days=1), periods=cfg.horizon, freq="D")
+    valid_dates = pd.date_range(
+        train_end + pd.Timedelta(days=1), periods=cfg.horizon, freq="D"
+    )
     fit_train_end = train_end - pd.Timedelta(days=cfg.horizon)
     fit_profile = load_profile_for_date(y, fit_train_end, cfg)
     eval_profile = load_profile_for_date(y, train_end, cfg)
@@ -271,7 +295,9 @@ def train_and_evaluate(cfg: LGBMConfig = LGBMConfig()) -> dict[str, float | int 
         filter_inactive=cfg.filter_inactive,
     )
     # Keep validation light while preserving recent origin behavior.
-    x_valid_train = x_valid_train.tail(min(len(x_valid_train), cfg.top_n_skus * cfg.horizon * 8))
+    x_valid_train = x_valid_train.tail(
+        min(len(x_valid_train), cfg.top_n_skus * cfg.horizon * 8)
+    )
     y_valid_train = y_valid_train.loc[x_valid_train.index]
     w_valid_train = w_valid_train.loc[x_valid_train.index]
 
@@ -303,8 +329,12 @@ def train_and_evaluate(cfg: LGBMConfig = LGBMConfig()) -> dict[str, float | int 
         ],
     )
 
-    x_pred = build_forecast_features(y, eval_profile, train_end, valid_dates, cfg, item_codes)
-    pred_values = model.predict(x_pred.drop(columns=["Date"]), num_iteration=model.best_iteration)
+    x_pred = build_forecast_features(
+        y, eval_profile, train_end, valid_dates, cfg, item_codes
+    )
+    pred_values = model.predict(
+        x_pred.drop(columns=["Date"]), num_iteration=model.best_iteration
+    )
     lgbm_top = pd.DataFrame(
         pred_values.reshape(len(valid_dates), len(item_codes)).T,
         index=item_codes,
@@ -321,7 +351,9 @@ def train_and_evaluate(cfg: LGBMConfig = LGBMConfig()) -> dict[str, float | int 
     best_hybrid = baseline
     for alpha in np.linspace(0, 1, 21):
         candidate = baseline.copy()
-        blended_top = alpha * lgbm_top + (1 - alpha) * baseline.loc[item_codes, valid_dates]
+        blended_top = (
+            alpha * lgbm_top + (1 - alpha) * baseline.loc[item_codes, valid_dates]
+        )
         candidate.loc[item_codes, valid_dates] = blended_top.to_numpy(dtype="float32")
         candidate = candidate.clip(lower=0).astype("float32")
         score, _ = wrmsse(actual, candidate, train_y, eval_profile["profit_weight"])
@@ -332,7 +364,9 @@ def train_and_evaluate(cfg: LGBMConfig = LGBMConfig()) -> dict[str, float | int 
             best_hybrid = candidate
 
     hybrid = best_hybrid
-    hybrid_score, sku_scores = wrmsse(actual, hybrid, train_y, eval_profile["profit_weight"])
+    hybrid_score, sku_scores = wrmsse(
+        actual, hybrid, train_y, eval_profile["profit_weight"]
+    )
     top_score, _ = wrmsse(
         actual.loc[item_codes],
         hybrid.loc[item_codes],
@@ -364,7 +398,10 @@ def train_and_evaluate(cfg: LGBMConfig = LGBMConfig()) -> dict[str, float | int 
         [
             {"model": "median_56", "wrmsse_56": baseline_score},
             {"model": f"hybrid_lgbm_top_{cfg.top_n_skus}", "wrmsse_56": hybrid_score},
-            {"model": f"hybrid_lgbm_top_{cfg.top_n_skus}_renormalized", "wrmsse_56": top_score},
+            {
+                "model": f"hybrid_lgbm_top_{cfg.top_n_skus}_renormalized",
+                "wrmsse_56": top_score,
+            },
         ]
     ).to_csv(artifact_dir / f"lgbm_valid_scores_{run_name}.csv", index=False)
 
@@ -391,17 +428,27 @@ def train_and_evaluate(cfg: LGBMConfig = LGBMConfig()) -> dict[str, float | int 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--top-n-skus", type=int, default=LGBMConfig.top_n_skus)
-    parser.add_argument("--lookback-days", type=int, default=LGBMConfig.origin_lookback_days)
+    parser.add_argument(
+        "--lookback-days", type=int, default=LGBMConfig.origin_lookback_days
+    )
     parser.add_argument("--origin-stride", type=int, default=LGBMConfig.origin_stride)
-    parser.add_argument("--valid-train-end", type=str, default=LGBMConfig.valid_train_end)
-    parser.add_argument("--num-boost-round", type=int, default=LGBMConfig.num_boost_round)
+    parser.add_argument(
+        "--valid-train-end", type=str, default=LGBMConfig.valid_train_end
+    )
+    parser.add_argument(
+        "--num-boost-round", type=int, default=LGBMConfig.num_boost_round
+    )
     parser.add_argument(
         "--early-stopping-rounds", type=int, default=LGBMConfig.early_stopping_rounds
     )
     parser.add_argument("--sku-strategy", type=str, default=LGBMConfig.sku_strategy)
-    parser.add_argument("--min-active-days", type=int, default=LGBMConfig.min_active_days)
     parser.add_argument(
-        "--max-days-since-last-sale", type=int, default=LGBMConfig.max_days_since_last_sale
+        "--min-active-days", type=int, default=LGBMConfig.min_active_days
+    )
+    parser.add_argument(
+        "--max-days-since-last-sale",
+        type=int,
+        default=LGBMConfig.max_days_since_last_sale,
     )
     parser.add_argument("--filter-inactive", action="store_true")
     parser.add_argument("--use-global-profile", action="store_true")

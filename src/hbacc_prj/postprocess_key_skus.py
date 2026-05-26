@@ -57,7 +57,9 @@ def _submission_values(submission: pd.DataFrame, sku: str) -> np.ndarray:
     return np.concatenate(parts)
 
 
-def _set_submission_values(submission: pd.DataFrame, sku: str, values: np.ndarray) -> None:
+def _set_submission_values(
+    submission: pd.DataFrame, sku: str, values: np.ndarray
+) -> None:
     if len(values) != 56:
         raise ValueError("Expected 56 forecast values")
     for suffix, part in [
@@ -80,7 +82,9 @@ def adjust_submission(
     y = pd.read_pickle("data/processed/daily_demand_matrix.pkl")
     train_end_ts = pd.Timestamp(train_end)
     train_y = y.loc[:, pd.DatetimeIndex(y.columns) <= train_end_ts]
-    horizon_dates = pd.date_range(train_end_ts + pd.Timedelta(days=1), periods=56, freq="D")
+    horizon_dates = pd.date_range(
+        train_end_ts + pd.Timedelta(days=1), periods=56, freq="D"
+    )
     submission = pd.read_csv(input_path)
 
     rules = {
@@ -110,7 +114,9 @@ def adjust_submission(
 
     if submission[VALUE_COLUMNS].isna().any().any():
         raise ValueError("adjusted submission has missing values")
-    submission[VALUE_COLUMNS] = submission[VALUE_COLUMNS].clip(lower=0).astype("float32")
+    submission[VALUE_COLUMNS] = (
+        submission[VALUE_COLUMNS].clip(lower=0).astype("float32")
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     submission.to_csv(output_path, index=False)
     print(
@@ -128,7 +134,9 @@ def main() -> None:
     parser.add_argument("--sku2-alpha", type=float, default=0.0)
     parser.add_argument("--sku3-alpha", type=float, default=0.15)
     args = parser.parse_args()
-    adjust_submission(args.input, args.output, args.train_end, args.sku2_alpha, args.sku3_alpha)
+    adjust_submission(
+        args.input, args.output, args.train_end, args.sku2_alpha, args.sku3_alpha
+    )
 
 
 if __name__ == "__main__":

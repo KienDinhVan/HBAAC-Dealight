@@ -183,7 +183,9 @@ def evaluate(cfg: TwoStageConfig) -> dict[str, float | int | str]:
     artifact_dir = Path("data/artifacts")
     y = pd.read_pickle("data/processed/daily_demand_matrix.pkl")
     train_end = pd.Timestamp(cfg.valid_train_end)
-    valid_dates = pd.date_range(train_end + pd.Timedelta(days=1), periods=cfg.horizon, freq="D")
+    valid_dates = pd.date_range(
+        train_end + pd.Timedelta(days=1), periods=cfg.horizon, freq="D"
+    )
     lgbm_cfg = cfg.lgbm_config
     fit_train_end = train_end - pd.Timedelta(days=cfg.horizon)
     fit_profile = load_profile_for_date(y, fit_train_end, lgbm_cfg)
@@ -211,11 +213,17 @@ def evaluate(cfg: TwoStageConfig) -> dict[str, float | int | str]:
     baseline = postprocess_forecast(baseline, train_y, cfg)
     baseline_score, _ = wrmsse(actual, baseline, train_y, eval_profile["profit_weight"])
 
-    classifier, regressor = _train_models(x_train, y_train, w_train, x_valid, y_valid, w_valid, cfg)
+    classifier, regressor = _train_models(
+        x_train, y_train, w_train, x_valid, y_valid, w_valid, cfg
+    )
     twostage_top = None
     if not cfg.recursive_forecast:
-        x_pred = build_forecast_features(y, eval_profile, train_end, valid_dates, lgbm_cfg, item_codes)
-        twostage_top = _predict_twostage(classifier, regressor, x_pred, item_codes, valid_dates)
+        x_pred = build_forecast_features(
+            y, eval_profile, train_end, valid_dates, lgbm_cfg, item_codes
+        )
+        twostage_top = _predict_twostage(
+            classifier, regressor, x_pred, item_codes, valid_dates
+        )
 
     rows = []
     best_alpha = 0.0
@@ -237,7 +245,10 @@ def evaluate(cfg: TwoStageConfig) -> dict[str, float | int | str]:
             )
         else:
             candidate = baseline.copy()
-            blended = alpha * twostage_top + (1 - alpha) * baseline.loc[item_codes, valid_dates]
+            blended = (
+                alpha * twostage_top
+                + (1 - alpha) * baseline.loc[item_codes, valid_dates]
+            )
             candidate.loc[item_codes, valid_dates] = blended.to_numpy(dtype="float32")
             candidate = candidate.clip(lower=0).astype("float32")
             candidate = postprocess_forecast(candidate, train_y, cfg)
@@ -253,9 +264,15 @@ def evaluate(cfg: TwoStageConfig) -> dict[str, float | int | str]:
     classifier.save_model(str(artifact_dir / f"classifier_{run_name}.txt"))
     regressor.save_model(str(artifact_dir / f"regressor_{run_name}.txt"))
     if twostage_top is not None:
-        twostage_top.to_pickle(artifact_dir / f"twostage_valid_top_sku_forecast_{run_name}.pkl")
-    best_forecast.to_pickle(artifact_dir / f"twostage_hybrid_valid_forecast_{run_name}.pkl")
-    pd.DataFrame(rows).to_csv(artifact_dir / f"twostage_blend_grid_{run_name}.csv", index=False)
+        twostage_top.to_pickle(
+            artifact_dir / f"twostage_valid_top_sku_forecast_{run_name}.pkl"
+        )
+    best_forecast.to_pickle(
+        artifact_dir / f"twostage_hybrid_valid_forecast_{run_name}.pkl"
+    )
+    pd.DataFrame(rows).to_csv(
+        artifact_dir / f"twostage_blend_grid_{run_name}.csv", index=False
+    )
 
     result = {
         "run_name": run_name,
@@ -265,7 +282,9 @@ def evaluate(cfg: TwoStageConfig) -> dict[str, float | int | str]:
         "classifier_best_iteration": classifier.best_iteration,
         "regressor_best_iteration": regressor.best_iteration,
     }
-    pd.DataFrame([result]).to_csv(artifact_dir / f"twostage_valid_scores_{run_name}.csv", index=False)
+    pd.DataFrame([result]).to_csv(
+        artifact_dir / f"twostage_valid_scores_{run_name}.csv", index=False
+    )
     print("Two-stage validation WRMSSE")
     print(f"median_56: {baseline_score:.6f}")
     print(f"twostage_hybrid: {best_score:.6f}")
@@ -365,12 +384,14 @@ def forecast_alpha_recursive(
             lgbm_cfg,
             item_codes,
         )
-        pred_values = _predict_twostage_values(classifier, regressor, x_pred).astype("float32")
+        pred_values = _predict_twostage_values(classifier, regressor, x_pred).astype(
+            "float32"
+        )
         baseline = forecast_recent_median(y_work, pd.DatetimeIndex([target_date]), 56)
         candidate = baseline.copy()
-        blended = alpha * pred_values + (1 - alpha) * baseline.loc[item_codes, target_date].to_numpy(
-            dtype="float32"
-        )
+        blended = alpha * pred_values + (1 - alpha) * baseline.loc[
+            item_codes, target_date
+        ].to_numpy(dtype="float32")
         candidate.loc[item_codes, target_date] = blended
         candidate = candidate.clip(lower=0).astype("float32")
         candidate = postprocess_forecast(candidate, y_work, cfg)
@@ -387,12 +408,16 @@ def forecast_future(cfg: TwoStageConfig, alphas: list[float]) -> None:
     sample = pd.read_csv("data/raw/sample_submission.csv")
     y = pd.read_pickle("data/processed/daily_demand_matrix.pkl")
     train_end = pd.DatetimeIndex(y.columns).max()
-    horizon_dates = pd.date_range(train_end + pd.Timedelta(days=1), periods=cfg.horizon, freq="D")
+    horizon_dates = pd.date_range(
+        train_end + pd.Timedelta(days=1), periods=cfg.horizon, freq="D"
+    )
     lgbm_cfg = cfg.lgbm_config
     profile = load_profile_for_date(y, train_end, lgbm_cfg)
     item_codes = selected_skus(profile, lgbm_cfg)
 
-    x_train, y_train, w_train = build_direct_dataset(y, profile, train_end, lgbm_cfg, item_codes)
+    x_train, y_train, w_train = build_direct_dataset(
+        y, profile, train_end, lgbm_cfg, item_codes
+    )
     x_valid, y_valid, w_valid = build_direct_dataset(
         y,
         profile,
@@ -407,17 +432,25 @@ def forecast_future(cfg: TwoStageConfig, alphas: list[float]) -> None:
 
     baseline = forecast_recent_median(y, horizon_dates, 56)
     baseline = postprocess_forecast(baseline, y, cfg)
-    classifier, regressor = _train_models(x_train, y_train, w_train, x_valid, y_valid, w_valid, cfg)
+    classifier, regressor = _train_models(
+        x_train, y_train, w_train, x_valid, y_valid, w_valid, cfg
+    )
     twostage_top = None
     if not cfg.recursive_forecast:
-        x_pred = build_forecast_features(y, profile, train_end, horizon_dates, lgbm_cfg, item_codes)
-        twostage_top = _predict_twostage(classifier, regressor, x_pred, item_codes, horizon_dates)
+        x_pred = build_forecast_features(
+            y, profile, train_end, horizon_dates, lgbm_cfg, item_codes
+        )
+        twostage_top = _predict_twostage(
+            classifier, regressor, x_pred, item_codes, horizon_dates
+        )
 
     run_name = cfg.run_name
     classifier.save_model(str(artifact_dir / f"classifier_future_{run_name}.txt"))
     regressor.save_model(str(artifact_dir / f"regressor_future_{run_name}.txt"))
     if twostage_top is not None:
-        twostage_top.to_pickle(artifact_dir / f"twostage_future_top_sku_forecast_{run_name}.pkl")
+        twostage_top.to_pickle(
+            artifact_dir / f"twostage_future_top_sku_forecast_{run_name}.pkl"
+        )
 
     for alpha in alphas:
         if cfg.recursive_forecast:
@@ -435,7 +468,10 @@ def forecast_future(cfg: TwoStageConfig, alphas: list[float]) -> None:
             )
         else:
             forecast = baseline.copy()
-            blended = alpha * twostage_top + (1 - alpha) * baseline.loc[item_codes, horizon_dates]
+            blended = (
+                alpha * twostage_top
+                + (1 - alpha) * baseline.loc[item_codes, horizon_dates]
+            )
             forecast.loc[item_codes, horizon_dates] = blended.to_numpy(dtype="float32")
             forecast = forecast.clip(lower=0).astype("float32")
             forecast = postprocess_forecast(forecast, y, cfg)
@@ -443,7 +479,9 @@ def forecast_future(cfg: TwoStageConfig, alphas: list[float]) -> None:
         submission = sample[["id"]].merge(wide, on="id", how="left")
         if submission[VALUE_COLUMNS].isna().any().any():
             raise ValueError("future two-stage submission has missing ids")
-        submission[VALUE_COLUMNS] = submission[VALUE_COLUMNS].clip(lower=0).astype("float32")
+        submission[VALUE_COLUMNS] = (
+            submission[VALUE_COLUMNS].clip(lower=0).astype("float32")
+        )
         out_path = artifact_dir / f"submission_{run_name}_alpha{alpha:.2f}.csv"
         submission.to_csv(out_path, index=False)
         print(
@@ -457,15 +495,27 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["evaluate", "future"], default="evaluate")
     parser.add_argument("--top-n-skus", type=int, default=TwoStageConfig.top_n_skus)
-    parser.add_argument("--valid-train-end", type=str, default=TwoStageConfig.valid_train_end)
-    parser.add_argument("--lookback-days", type=int, default=TwoStageConfig.origin_lookback_days)
-    parser.add_argument("--origin-stride", type=int, default=TwoStageConfig.origin_stride)
-    parser.add_argument("--num-boost-round", type=int, default=TwoStageConfig.num_boost_round)
     parser.add_argument(
-        "--early-stopping-rounds", type=int, default=TwoStageConfig.early_stopping_rounds
+        "--valid-train-end", type=str, default=TwoStageConfig.valid_train_end
+    )
+    parser.add_argument(
+        "--lookback-days", type=int, default=TwoStageConfig.origin_lookback_days
+    )
+    parser.add_argument(
+        "--origin-stride", type=int, default=TwoStageConfig.origin_stride
+    )
+    parser.add_argument(
+        "--num-boost-round", type=int, default=TwoStageConfig.num_boost_round
+    )
+    parser.add_argument(
+        "--early-stopping-rounds",
+        type=int,
+        default=TwoStageConfig.early_stopping_rounds,
     )
     parser.add_argument("--sku-strategy", type=str, default=TwoStageConfig.sku_strategy)
-    parser.add_argument("--min-active-days", type=int, default=TwoStageConfig.min_active_days)
+    parser.add_argument(
+        "--min-active-days", type=int, default=TwoStageConfig.min_active_days
+    )
     parser.add_argument(
         "--max-days-since-last-sale",
         type=int,
@@ -474,7 +524,9 @@ def main() -> None:
     parser.add_argument("--alphas", type=str, default="0.50,0.70,0.80,1.00")
     parser.add_argument("--use-global-profile", action="store_true")
     parser.add_argument("--keep-sundays", action="store_true")
-    parser.add_argument("--end-of-selling-since", type=str, default=TwoStageConfig.end_of_selling_since)
+    parser.add_argument(
+        "--end-of-selling-since", type=str, default=TwoStageConfig.end_of_selling_since
+    )
     parser.add_argument("--recursive-forecast", action="store_true")
     args = parser.parse_args()
 
