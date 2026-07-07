@@ -111,6 +111,7 @@ def test_stage_offline_store_deletes_batch_then_loads(bucket: FakeBucket) -> Non
     bq.create_table.assert_called_once()
     delete_sql = bq.query.call_args.args[0]
     assert "DELETE" in delete_sql and "batch_id" in delete_sql
+    bq.query.return_value.result.assert_called_once()
     load_uri = bq.load_table_from_uri.call_args.args[0]
     assert load_uri == "gs://fake-bucket/curated/batch_id=b1/sales_daily.parquet"
     assert summary == {"table": "proj.dealight.sales_daily", "loaded_rows": 7}
