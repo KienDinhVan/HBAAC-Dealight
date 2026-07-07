@@ -21,9 +21,34 @@ class Settings:
     model_version: str = "public-0.48729"
     cors_origins: tuple[str, ...] = ()
 
+    # --- Workspace web extension (Sprint 9) ---
+    openrouter_api_key: str = ""
+    openrouter_model: str = "google/gemini-2.5-flash-preview-05-20"
+    airflow_base_url: str = "http://airflow-webserver:8080"
+    airflow_username: str = "airflow"
+    airflow_password: str = "airflow"
+    dealight_data_dir: str = "/opt/project/data/raw"
+    upload_dir: str = "/opt/project/data/uploads"
+    monitoring_dir: str = "/opt/project/data/monitoring"
+    mlflow_tracking_uri: str = "http://mlflow:5000"
+    mlflow_model_uri: str = ""
+    inline_predict_max_rows: int = 50_000
+    enable_agents: bool = True
+    # --- DE GCS pipeline (DE_arch) ---
+    gcp_project_id: str = ""
+    gcs_bucket: str = ""
+    bq_dataset: str = "dealight"
+
 
 def _parse_origins(raw: str) -> tuple[str, ...]:
     return tuple(origin.strip() for origin in raw.split(",") if origin.strip())
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @lru_cache(maxsize=1)
@@ -41,4 +66,21 @@ def get_settings() -> Settings:
         model_name=os.getenv("MODEL_NAME", defaults.model_name),
         model_version=os.getenv("MODEL_VERSION", defaults.model_version),
         cors_origins=_parse_origins(os.getenv("CORS_ORIGINS", "")),
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", defaults.openrouter_api_key),
+        openrouter_model=os.getenv("OPENROUTER_MODEL", defaults.openrouter_model),
+        airflow_base_url=os.getenv("AIRFLOW_BASE_URL", defaults.airflow_base_url),
+        airflow_username=os.getenv("AIRFLOW_USERNAME", defaults.airflow_username),
+        airflow_password=os.getenv("AIRFLOW_PASSWORD", defaults.airflow_password),
+        dealight_data_dir=os.getenv("DEALIGHT_DATA_DIR", defaults.dealight_data_dir),
+        upload_dir=os.getenv("UPLOAD_DIR", defaults.upload_dir),
+        monitoring_dir=os.getenv("MONITORING_DIR", defaults.monitoring_dir),
+        mlflow_tracking_uri=os.getenv("MLFLOW_TRACKING_URI", defaults.mlflow_tracking_uri),
+        mlflow_model_uri=os.getenv("MLFLOW_MODEL_URI", defaults.mlflow_model_uri),
+        inline_predict_max_rows=int(
+            os.getenv("INLINE_PREDICT_MAX_ROWS", defaults.inline_predict_max_rows)
+        ),
+        enable_agents=_env_bool("ENABLE_AGENTS", defaults.enable_agents),
+        gcp_project_id=os.getenv("GCP_PROJECT_ID", defaults.gcp_project_id),
+        gcs_bucket=os.getenv("GCS_BUCKET", defaults.gcs_bucket),
+        bq_dataset=os.getenv("BQ_DATASET", defaults.bq_dataset),
     )
