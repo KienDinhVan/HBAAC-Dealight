@@ -13,9 +13,11 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD_URLENCODED:-forecast-local-only}@postgres:5432/airflow
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY:-sprint1-local-only-secret-key}
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
     AIRFLOW_CONN_POSTGRES_DEFAULT: postgresql://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD_URLENCODED:-forecast-local-only}@postgres:5432/${POSTGRES_DB:-sku_forecasting}
     AIRFLOW_CONN_MINIO_DEFAULT: aws://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin}@?endpoint_url=http%3A%2F%2Fminio%3A9000
     AIRFLOW_CONN_MLFLOW_TRACKING_URI: http://mlflow:5000
+    DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     DATABASE_URL: postgresql://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD:-forecast-local-only}@postgres:5432/${POSTGRES_DB:-sku_forecasting}
     MLFLOW_TRACKING_URI: http://mlflow:5000
     MLFLOW_S3_ENDPOINT_URL: http://minio:9000
@@ -24,6 +26,10 @@ x-airflow-common: &airflow-common
     SOURCE_GIT_COMMIT: ${SOURCE_GIT_COMMIT:-unavailable-in-runtime}
     GIT_PYTHON_REFRESH: quiet
     PYTHONPATH: /opt/project/src:/opt/project
+    GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+    GCS_BUCKET: ${GCS_BUCKET:-}
+    BQ_DATASET: ${BQ_DATASET:-dealight}
+    GOOGLE_APPLICATION_CREDENTIALS: /opt/project/secrets/gcp-key.json
   volumes:
     - ../dags:/opt/airflow/dags:ro
     - airflow-logs:/opt/airflow/logs
@@ -31,7 +37,9 @@ x-airflow-common: &airflow-common
     - ../scripts:/opt/project/scripts:ro
     - ../data/raw:/opt/project/data/raw:ro
     - ../data/features:/opt/project/data/features
+    - ../data/monitoring:/opt/project/data/monitoring
     - ../feature_registry.yaml:/opt/project/feature_registry.yaml:ro
+    - ./secrets:/opt/project/secrets:ro
 
 services:
   postgres:
@@ -121,6 +129,8 @@ services:
       - 0.0.0.0
       - --port
       - "5000"
+      - --allowed-hosts
+      - ${MLFLOW_ALLOWED_HOSTS:-mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000}
       - --backend-store-uri
       - postgresql+psycopg2://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD_URLENCODED:-forecast-local-only}@postgres:5432/mlflow
       - --default-artifact-root
@@ -163,6 +173,29 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-forecast}:${POSTGRES_PASSWORD:-forecast-local-only}@postgres:5432/${POSTGRES_DB:-sku_forecasting}
       SERVICE_NAME: sku-forecast-api
       SERVICE_VERSION: "0.1.0"
+      # Workspace web (Sprint 9) — agents + airflow trigger + CSV predict
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.5-flash-preview-05-20}
+      ENABLE_AGENTS: ${ENABLE_AGENTS:-true}
+      AIRFLOW_BASE_URL: http://airflow-webserver:8080
+      AIRFLOW_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
+      AIRFLOW_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
+      DEALIGHT_DATA_DIR: /opt/project/data/raw
+      UPLOAD_DIR: /opt/project/data/uploads
+      MONITORING_DIR: /opt/project/data/monitoring
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_MODEL_URI: ${MLFLOW_MODEL_URI:-}
+      INLINE_PREDICT_MAX_ROWS: ${INLINE_PREDICT_MAX_ROWS:-50000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4000,http://127.0.0.1:4000,http://localhost:3000}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCS_BUCKET: ${GCS_BUCKET:-}
+      BQ_DATASET: ${BQ_DATASET:-dealight}
+      GOOGLE_APPLICATION_CREDENTIALS: /opt/project/secrets/gcp-key.json
+    volumes:
+      - ../data/raw:/opt/project/data/raw:ro
+      - ../data/uploads:/opt/project/data/uploads
+      - ../data/monitoring:/opt/project/data/monitoring:ro
+      - ./secrets:/opt/project/secrets:ro
     ports:
       - "${API_PORT:-8000}:8000"
     healthcheck:
@@ -170,6 +203,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  web:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      forecast-api:
+        condition: service_healthy
+    environment:
+      API_UPSTREAM: http://forecast-api:8000
+    ports:
+      - "127.0.0.1:${WEB_PORT:-4000}:80"
 
   airflow-init:
     <<: *airflow-common
@@ -181,14 +227,17 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - >
-        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/logs &&
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/logs /opt/project/data/monitoring &&
         airflow db migrate &&
         (airflow users create
         --username "${AIRFLOW_ADMIN_USER:-admin}"
         --password "${AIRFLOW_ADMIN_PASSWORD:-admin}"
         --firstname Sprint --lastname Admin --role Admin
         --email admin@example.local || true) &&
-        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/logs
+        airflow users reset-password
+        --username "${AIRFLOW_ADMIN_USER:-admin}"
+        --password "${AIRFLOW_ADMIN_PASSWORD:-admin}" &&
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/logs /opt/project/data/monitoring
 
   airflow-webserver:
     <<: *airflow-common
@@ -228,6 +277,7 @@ services:
         condition: service_healthy
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus-data:/prometheus
     ports:
       - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
@@ -239,6 +289,8 @@ services:
       - prometheus
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
 
