@@ -93,3 +93,10 @@ def test_ingest_run_status(client: TestClient) -> None:
     resp = client.get("/ingest/runs/manual__20260707T010000Z")
     assert resp.status_code == 200
     assert resp.json()["state"] == "success"
+
+
+def test_upload_gcs_failure_returns_502(client: TestClient) -> None:
+    app.state.gcs_uploader.upload_bytes = MagicMock(side_effect=RuntimeError("bucket gone"))
+    resp = client.post("/ingest/upload", files=_csv_file())
+    assert resp.status_code == 502
+    assert "GCS upload failed" in resp.text
