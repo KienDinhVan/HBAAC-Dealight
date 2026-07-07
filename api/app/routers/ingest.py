@@ -9,6 +9,7 @@ from starlette.concurrency import run_in_threadpool
 
 from api.app.clients.airflow import AirflowClient
 from api.app.clients.gcs import GcsUploader
+from api.app.config import get_settings
 from api.app.deps import get_airflow_client, get_gcs_uploader
 from api.app.schemas import IngestRunStatusResponse, IngestUploadResponse
 
@@ -35,6 +36,12 @@ async def upload(
     data = await file.read()
     if not data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Uploaded file is empty")
+    max_bytes = get_settings().max_upload_bytes
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"File exceeds the {max_bytes} byte upload limit",
+        )
 
     batch_id = uuid4().hex
     source_blob = f"landing/{batch_id}/{filename}"

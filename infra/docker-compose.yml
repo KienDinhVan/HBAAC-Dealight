@@ -190,6 +190,7 @@ services:
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
       GCS_BUCKET: ${GCS_BUCKET:-}
       BQ_DATASET: ${BQ_DATASET:-dealight}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-104857600}
       GOOGLE_APPLICATION_CREDENTIALS: /opt/project/secrets/gcp-key.json
     volumes:
       - ../data/raw:/opt/project/data/raw:ro

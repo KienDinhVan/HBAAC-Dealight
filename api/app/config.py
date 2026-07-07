@@ -38,6 +38,7 @@ class Settings:
     gcp_project_id: str = ""
     gcs_bucket: str = ""
     bq_dataset: str = "dealight"
+    max_upload_bytes: int = 104_857_600  # 100 MiB cap for /ingest/upload
 
 
 def _parse_origins(raw: str) -> tuple[str, ...]:
@@ -83,4 +84,5 @@ def get_settings() -> Settings:
         gcp_project_id=os.getenv("GCP_PROJECT_ID", defaults.gcp_project_id),
         gcs_bucket=os.getenv("GCS_BUCKET", defaults.gcs_bucket),
         bq_dataset=os.getenv("BQ_DATASET", defaults.bq_dataset),
+        max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", defaults.max_upload_bytes)),
     )

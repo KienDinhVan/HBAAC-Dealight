@@ -100,3 +100,16 @@ def test_upload_gcs_failure_returns_502(client: TestClient) -> None:
     resp = client.post("/ingest/upload", files=_csv_file())
     assert resp.status_code == 502
     assert "GCS upload failed" in resp.text
+
+
+def test_upload_too_large_returns_413(client: TestClient, monkeypatch) -> None:
+    from api.app.config import get_settings
+
+    monkeypatch.setenv("MAX_UPLOAD_BYTES", "10")
+    get_settings.cache_clear()
+    try:
+        resp = client.post("/ingest/upload", files=_csv_file(content=b"x" * 100))
+        assert resp.status_code == 413
+    finally:
+        monkeypatch.delenv("MAX_UPLOAD_BYTES", raising=False)
+        get_settings.cache_clear()
