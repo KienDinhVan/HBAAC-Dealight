@@ -89,3 +89,5 @@ def test_build_curated_aggregates_by_date_and_item() -> None:
     assert sku1["total_cost"] == 20.0
     assert sku1["txn_count"] == 2
     assert (curated["batch_id"] == "batch-1").all()
+    assert str(curated["total_quantity"].dtype) == "float64"
+    assert str(curated["txn_count"].dtype) == "int64"

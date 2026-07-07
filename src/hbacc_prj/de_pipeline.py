@@ -93,6 +93,14 @@ def build_curated(staging_df: pd.DataFrame, batch_id: str) -> pd.DataFrame:
         .sort_values(["date", "item_code"])
         .reset_index(drop=True)
     )
+    curated = curated.astype(
+        {
+            "total_quantity": "float64",
+            "total_sales": "float64",
+            "total_cost": "float64",
+            "txn_count": "int64",
+        }
+    )
     curated["batch_id"] = batch_id
     curated["loaded_at"] = pd.Timestamp.now(tz="UTC")
     return curated
