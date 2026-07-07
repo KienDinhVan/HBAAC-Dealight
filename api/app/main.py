@@ -1,23 +1,49 @@
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
 from datetime import date
 from time import perf_counter
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 
+from api.app.agents.drift import DriftAgent
+from api.app.agents.forecast import ForecastAgent
+from api.app.agents.retrain import RetrainAgent
+from api.app.agents.sales import SalesAgent
+from api.app.agents.team import TeamLeadAgent
+from api.app.clients.airflow import AirflowClient
+from api.app.clients.duckdb_client import DuckDBClient
+from api.app.clients.gcs import GcsUploader
+from api.app.clients.openrouter import OpenRouterClient
 from api.app.config import get_settings
+from api.app.infra.approval import ApprovalStore
 from api.app.repository import ForecastRepository
+from api.app.routers import chat as chat_router_module
+from api.app.routers import drift as drift_router_module
+from api.app.routers import ingest as ingest_router_module
+from api.app.routers import predict as predict_router_module
+from api.app.routers import retrain as retrain_router_module
 from api.app.schemas import (
     ForecastResponse,
     ForecastRunResponse,
     ForecastSummaryResponse,
     HealthResponse,
+    MonitoringReportResponse,
     TopSkusResponse,
     VersionResponse,
 )
+
+_logger = logging.getLogger(__name__)
 
 ITEM_CODE_PATTERN = r"^[A-Za-z0-9._\-]{1,64}$"
 
@@ -37,23 +63,104 @@ NOT_FOUND_COUNT = Counter(
 DATABASE_ERROR_COUNT = Counter(
     "database_connection_errors_total", "Database connection failures."
 )
+FORECAST_ROWS = Gauge(
+    "forecast_latest_row_count", "Rows in the latest monitored forecast run."
+)
+FORECAST_MISSING_SKUS = Gauge(
+    "forecast_latest_missing_skus", "Missing SKUs in the latest monitored forecast run."
+)
+FORECAST_NEGATIVE = Gauge(
+    "forecast_latest_negative_predictions",
+    "Negative predictions in the latest monitored forecast run.",
+)
+FORECAST_DRIFT = Gauge(
+    "forecast_latest_drift_detected",
+    "Whether latest data or prediction drift report raised drift.",
+)
 
 settings = get_settings()
-app = FastAPI(
-    title="SKU Forecast API",
-    version=settings.service_version,
-    description="Read-only API serving precomputed 56-day batch forecasts.",
-)
-app.state.repository = ForecastRepository(settings.database_url)
 
-if settings.cors_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=list(settings.cors_origins),
-        allow_credentials=False,
-        allow_methods=["GET"],
-        allow_headers=["*"],
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Initialise agents, Airflow client, and DuckDB sales loader on startup."""
+    app.state.repository = ForecastRepository(settings.database_url)
+    app.state.approval_store = ApprovalStore()
+    app.state.airflow_client = AirflowClient(
+        base_url=settings.airflow_base_url,
+        username=settings.airflow_username,
+        password=settings.airflow_password,
     )
+    app.state.gcs_uploader = (
+        GcsUploader(settings.gcs_bucket, project=settings.gcp_project_id or None)
+        if settings.gcs_bucket
+        else None
+    )
+    app.state.duckdb = None
+    app.state.team_lead = None
+    app.state.model = None
+
+    if settings.enable_agents:
+        try:
+            llm = OpenRouterClient(
+                api_key=settings.openrouter_api_key,
+                model=settings.openrouter_model,
+            )
+            duckdb = DuckDBClient(
+                data_dir=settings.dealight_data_dir,
+                database_url=settings.database_url,
+            )
+            app.state.duckdb = duckdb
+            sales_agent = SalesAgent(client=llm, db=duckdb)
+            forecast_agent = ForecastAgent(client=llm, db=duckdb)
+            drift_agent = DriftAgent(client=llm, repo=app.state.repository)
+            retrain_agent = RetrainAgent(client=llm, airflow=app.state.airflow_client)
+            app.state.team_lead = TeamLeadAgent(
+                client=llm,
+                sales_agent=sales_agent,
+                forecast_agent=forecast_agent,
+                drift_agent=drift_agent,
+                retrain_agent=retrain_agent,
+            )
+            _logger.info("HBAAC TeamLeadAgent ready (Sales/Forecast/Drift/Retrain).")
+        except Exception:  # noqa: BLE001
+            _logger.exception(
+                "Agent init failed — chat/agent endpoints will return 503 but the rest of the API still works."
+            )
+    else:
+        _logger.info("ENABLE_AGENTS=false — skipping agent initialisation.")
+
+    yield
+
+
+app = FastAPI(
+    title="HBAAC-Dealight Workspace API",
+    version=settings.service_version,
+    description=(
+        "Forecast serving + CSV predict, drift monitoring, retrain trigger, "
+        "and a multi-agent ReAct chat (TeamLead → Sales/Forecast/Drift/Retrain)."
+    ),
+    lifespan=_lifespan,
+)
+
+# Permissive CORS for the local web workspace + any explicitly-listed origin.
+_cors_origins = list(settings.cors_origins) or [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(chat_router_module.router)
+app.include_router(predict_router_module.router)
+app.include_router(drift_router_module.router)
+app.include_router(retrain_router_module.router)
+app.include_router(ingest_router_module.router)
 
 
 def _repository(request: Request) -> ForecastRepository:
@@ -65,6 +172,15 @@ def _float_values(value: dict[str, Any], *fields: str) -> dict[str, Any]:
         if value.get(field) is not None:
             value[field] = float(value[field])
     return value
+
+
+def _observe_monitoring(report: dict[str, Any] | None) -> None:
+    if report is None:
+        return
+    FORECAST_ROWS.set(report["forecast_row_count"])
+    FORECAST_MISSING_SKUS.set(report["missing_sku_count"])
+    FORECAST_NEGATIVE.set(report["negative_prediction_count"])
+    FORECAST_DRIFT.set(1 if report["drift_detected"] else 0)
 
 
 @app.middleware("http")
@@ -195,6 +311,27 @@ def get_forecast(
     }
 
 
+@app.get("/monitoring/latest", response_model=MonitoringReportResponse)
+def latest_monitoring_report(request: Request) -> dict[str, Any]:
+    report = _repository(request).latest_monitoring_report()
+    if report is None:
+        raise HTTPException(status_code=404, detail="No monitoring report found")
+    _observe_monitoring(report)
+    return _float_values(
+        report,
+        "prediction_min",
+        "prediction_mean",
+        "prediction_max",
+        "zero_ratio",
+    )
+
+
 @app.get("/metrics", include_in_schema=False)
-def metrics() -> Response:
+def metrics(request: Request) -> Response:
+    latest_report = getattr(_repository(request), "latest_monitoring_report", None)
+    if latest_report is not None:
+        try:
+            _observe_monitoring(latest_report())
+        except Exception:
+            DATABASE_ERROR_COUNT.inc()
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
