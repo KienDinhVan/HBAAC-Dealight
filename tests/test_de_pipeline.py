@@ -91,3 +91,10 @@ def test_build_curated_aggregates_by_date_and_item() -> None:
     assert (curated["batch_id"] == "batch-1").all()
     assert str(curated["total_quantity"].dtype) == "float64"
     assert str(curated["txn_count"].dtype) == "int64"
+
+
+def test_mixed_type_stt_is_normalized_to_string() -> None:
+    df = _make_df(Stt=[1, "2007644", 3])
+    result = validate_transactions(df)
+    assert len(result.passed) == 3
+    assert str(result.passed["stt"].dtype) == "string"

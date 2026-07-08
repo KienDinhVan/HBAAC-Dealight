@@ -70,6 +70,8 @@ def validate_transactions(df: pd.DataFrame) -> ValidationResult:
     passed = df.loc[~bad_mask, list(REQUIRED_COLUMNS)].rename(columns=_STAGING_RENAME)
     passed = passed.assign(
         date=parsed_date.loc[~bad_mask],
+        # Real exports mix int and str in Stt; a stable dtype is required for parquet.
+        stt=df.loc[~bad_mask, "Stt"].astype("string"),
         item_code=item_code.loc[~bad_mask],
         quantity=quantity.loc[~bad_mask],
         unit_price=unit_price.loc[~bad_mask],
