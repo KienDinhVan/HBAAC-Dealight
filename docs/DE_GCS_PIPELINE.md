@@ -6,8 +6,14 @@ Triển khai theo sơ đồ `DE_arch.png` (spec: `docs/superpowers/specs/2026-07
 
 `POST /ingest/upload` (CSV) → GCS `landing/` → trigger `dag_07_de_gcs_pipeline`:
 `ingest_raw` (→ `raw/`) → `process_validate_to_staging` (fail → `quarantine/` + `dq/summary.json`, pass → `staging/`)
-→ `build_curated` (→ `curated/`) → `load_offline_store` (→ BigQuery `dealight.sales_daily`, MERGE atomic)
+→ `build_curated` (→ `curated/`) → `load_offline_store` (→ BigQuery `dealight.sales_daily`, swap atomic)
 → `sync_online_store` (→ Redis hash `sales_daily:<item_code>`, dòng mới nhất mỗi SKU).
+
+Khi `BQ_BIGLAKE_CONNECTION` được đặt (mặc định sau khi chạy `setup_gcp.sh`),
+`sales_daily` là **BigQuery-managed Iceberg table**: data + metadata Iceberg nằm tại
+`gs://<bucket>/warehouse/sales_daily/`, hỗ trợ time travel (`FOR SYSTEM_TIME AS OF`)
+và đọc được từ engine ngoài (Spark/Trino/DuckDB). Để trống biến này thì dùng
+native BigQuery table như cũ. Kịch bản demo 6 tính chất: `docs/DEMO_E2E.md`.
 
 ## Setup một lần
 
