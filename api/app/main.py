@@ -152,7 +152,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=False,
-    allow_methods=["*"],
+    # Every endpoint is GET or POST; keep cross-origin surface to just those.
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 

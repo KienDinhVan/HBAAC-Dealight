@@ -30,21 +30,44 @@ echo ">> Creating BigQuery dataset ${DATASET} (idempotent)"
 bq --project_id "${PROJECT_ID}" --location "${REGION}" mk --dataset \
   "${PROJECT_ID}:${DATASET}" 2>/dev/null || true
 
-echo ">> Granting roles"
+echo ">> Setting lifecycle rules (landing/ deleted after 30d, raw/ to Nearline after 90d)"
+LIFECYCLE_FILE="$(mktemp)"
+cat > "${LIFECYCLE_FILE}" <<'JSON'
+{
+  "rule": [
+    {"action": {"type": "Delete"},
+     "condition": {"age": 30, "matchesPrefix": ["landing/"]}},
+    {"action": {"type": "SetStorageClass", "storageClass": "NEARLINE"},
+     "condition": {"age": 90, "matchesPrefix": ["raw/"]}}
+  ]
+}
+JSON
+gcloud storage buckets update "gs://${BUCKET}" --lifecycle-file="${LIFECYCLE_FILE}"
+rm -f "${LIFECYCLE_FILE}"
+
+echo ">> Granting roles (BigQuery dataEditor scoped to the dataset, not the project)"
 gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
   --member "serviceAccount:${SA_EMAIL}" \
   --role roles/storage.objectAdmin
-gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-  --member "serviceAccount:${SA_EMAIL}" \
-  --role roles/bigquery.dataEditor --condition=None
+bq --project_id "${PROJECT_ID}" query --use_legacy_sql=false \
+  "GRANT \`roles/bigquery.dataEditor\` ON SCHEMA \`${PROJECT_ID}.${DATASET}\` TO 'serviceAccount:${SA_EMAIL}'"
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member "serviceAccount:${SA_EMAIL}" \
   --role roles/bigquery.jobUser --condition=None
+# Drop the broad project-level grant if a previous version of this script added it.
+gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+  --member "serviceAccount:${SA_EMAIL}" \
+  --role roles/bigquery.dataEditor --condition=None 2>/dev/null || true
 
-echo ">> Creating key at ${KEY_PATH}"
-mkdir -p "$(dirname "${KEY_PATH}")"
-gcloud iam service-accounts keys create "${KEY_PATH}" \
-  --iam-account "${SA_EMAIL}"
+if [[ -f "${KEY_PATH}" ]]; then
+  echo ">> Key already exists at ${KEY_PATH} — skipping (delete it to force a new key)"
+else
+  echo ">> Creating key at ${KEY_PATH}"
+  mkdir -p "$(dirname "${KEY_PATH}")"
+  gcloud iam service-accounts keys create "${KEY_PATH}" \
+    --iam-account "${SA_EMAIL}"
+  chmod 644 "${KEY_PATH}"  # containers run as non-root uids and must read it
+fi
 
 cat <<EOF
 
