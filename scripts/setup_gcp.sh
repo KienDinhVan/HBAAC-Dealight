@@ -70,10 +70,13 @@ echo ">> Granting bucket write access to connection SA ${CONNECTION_SA}"
 gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
   --member "serviceAccount:${CONNECTION_SA}" \
   --role roles/storage.objectAdmin
-# The pipeline SA must be allowed to reference the connection in CREATE TABLE DDL.
-gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+# The pipeline SA needs bigquery.connections.delegate to reference the
+# connection in CREATE TABLE DDL; connectionUser lacks it, so grant
+# connectionAdmin scoped to this single connection (not the project).
+bq add-iam-policy-binding \
   --member "serviceAccount:${SA_EMAIL}" \
-  --role roles/bigquery.connectionUser --condition=None
+  --role roles/bigquery.connectionAdmin \
+  --connection "${PROJECT_ID}.${REGION}.${BIGLAKE_CONNECTION}"
 
 if [[ -f "${KEY_PATH}" ]]; then
   echo ">> Key already exists at ${KEY_PATH} — skipping (delete it to force a new key)"
