@@ -30,6 +30,7 @@ x-airflow-common: &airflow-common
     GCS_BUCKET: ${GCS_BUCKET:-}
     BQ_DATASET: ${BQ_DATASET:-dealight}
     GOOGLE_APPLICATION_CREDENTIALS: /opt/project/secrets/gcp-key.json
+    DQ_REJECT_ALERT_RATIO: ${DQ_REJECT_ALERT_RATIO:-0.1}
   volumes:
     - ../dags:/opt/airflow/dags:ro
     - airflow-logs:/opt/airflow/logs

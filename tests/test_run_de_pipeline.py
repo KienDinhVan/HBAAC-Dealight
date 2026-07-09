@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import io
+import json
 from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 
+from scripts import run_de_pipeline
 from scripts.run_de_pipeline import (
     CURATED_BLOB,
+    DQ_SUMMARY_BLOB,
     QUARANTINE_BLOB,
     RAW_BLOB,
     STAGING_BLOB,
@@ -75,11 +78,48 @@ def test_stage_raw_fails_on_missing_source(bucket: FakeBucket) -> None:
 def test_stage_staging_splits_pass_and_quarantine(bucket: FakeBucket) -> None:
     bucket.store[RAW_BLOB.format(batch_id="b1")] = VALID_CSV.encode()
     summary = stage_staging(bucket, "b1")
-    assert summary == {"rows_in": 3, "rows_passed": 2, "rows_rejected": 1}
+    assert summary["rows_in"] == 3
+    assert summary["rows_passed"] == 2
+    assert summary["rows_rejected"] == 1
+    assert summary["reject_ratio"] == pytest.approx(1 / 3, abs=1e-4)
+    assert summary["reject_reasons"] == {"invalid_date": 1}
     staging = pd.read_parquet(io.BytesIO(bucket.store[STAGING_BLOB.format(batch_id="b1")]))
     assert len(staging) == 2
     rejects = pd.read_csv(io.BytesIO(bucket.store[QUARANTINE_BLOB.format(batch_id="b1")]))
     assert rejects["reject_reason"].tolist() == ["invalid_date"]
+    # DQ summary is persisted next to the data layers.
+    dq = json.loads(bucket.store[DQ_SUMMARY_BLOB.format(batch_id="b1")])
+    assert dq == summary
+
+
+def test_stage_staging_alerts_when_reject_ratio_exceeds_threshold(
+    bucket: FakeBucket, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bucket.store[RAW_BLOB.format(batch_id="b1")] = VALID_CSV.encode()
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.test/hook")
+    monkeypatch.setenv("DQ_REJECT_ALERT_RATIO", "0.2")
+    sent: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        run_de_pipeline, "_post_discord", lambda url, content: sent.append((url, content))
+    )
+    stage_staging(bucket, "b1")
+    assert len(sent) == 1
+    assert sent[0][0] == "https://discord.test/hook"
+    assert "b1" in sent[0][1]
+
+
+def test_stage_staging_no_alert_below_threshold(
+    bucket: FakeBucket, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bucket.store[RAW_BLOB.format(batch_id="b1")] = VALID_CSV.encode()
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.test/hook")
+    monkeypatch.setenv("DQ_REJECT_ALERT_RATIO", "0.5")
+    sent: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        run_de_pipeline, "_post_discord", lambda url, content: sent.append((url, content))
+    )
+    stage_staging(bucket, "b1")
+    assert sent == []
 
 
 def test_stage_staging_fails_when_all_rows_rejected(bucket: FakeBucket) -> None:

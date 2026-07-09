@@ -19,8 +19,40 @@ RAW_BLOB = "raw/batch_id={batch_id}/train.csv"
 STAGING_BLOB = "staging/batch_id={batch_id}/transactions.parquet"
 QUARANTINE_BLOB = "quarantine/batch_id={batch_id}/rejects.csv"
 CURATED_BLOB = "curated/batch_id={batch_id}/sales_daily.parquet"
+DQ_SUMMARY_BLOB = "dq/batch_id={batch_id}/summary.json"
 
 BQ_TABLE_NAME = "sales_daily"
+
+
+def _post_discord(webhook_url: str, content: str) -> None:
+    import urllib.request
+
+    request = urllib.request.Request(
+        webhook_url,
+        data=json.dumps({"content": content}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    urllib.request.urlopen(request, timeout=10)
+
+
+def _report_data_quality(bucket, batch_id: str, summary: dict) -> None:
+    """Persist the DQ summary and alert when the reject ratio breaches the threshold."""
+    bucket.blob(DQ_SUMMARY_BLOB.format(batch_id=batch_id)).upload_from_string(
+        json.dumps(summary), content_type="application/json"
+    )
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
+    threshold = float(os.environ.get("DQ_REJECT_ALERT_RATIO", "0.1"))
+    if webhook_url and summary["reject_ratio"] > threshold:
+        message = (
+            f"[DE pipeline] batch {batch_id}: "
+            f"{summary['rows_rejected']}/{summary['rows_in']} rows rejected "
+            f"({summary['reject_ratio']:.1%}, threshold {threshold:.0%}) — "
+            f"reasons: {summary['reject_reasons']}. See quarantine/batch_id={batch_id}/."
+        )
+        try:
+            _post_discord(webhook_url, message)
+        except Exception as exc:  # noqa: BLE001 — alerting must never fail the batch
+            print(f"WARNING: Discord alert failed: {exc}")
 
 
 def stage_raw(bucket, batch_id: str, source_blob: str) -> dict:
@@ -41,6 +73,21 @@ def stage_staging(bucket, batch_id: str) -> dict:
         bucket.blob(QUARANTINE_BLOB.format(batch_id=batch_id)).upload_from_string(
             result.rejected.to_csv(index=False), content_type="text/csv"
         )
+
+    summary = {
+        "rows_in": int(len(df)),
+        "rows_passed": int(len(result.passed)),
+        "rows_rejected": int(len(result.rejected)),
+        "reject_ratio": round(len(result.rejected) / len(df), 4) if len(df) else 0.0,
+        "reject_reasons": (
+            result.rejected["reject_reason"].value_counts().to_dict()
+            if len(result.rejected)
+            else {}
+        ),
+    }
+    # Report before the all-rejected failure so a bad batch still alerts.
+    _report_data_quality(bucket, batch_id, summary)
+
     if len(result.passed) == 0:
         raise ValueError(f"All rows rejected for batch {batch_id} — see quarantine/")
 
@@ -49,11 +96,7 @@ def stage_staging(bucket, batch_id: str) -> dict:
     bucket.blob(STAGING_BLOB.format(batch_id=batch_id)).upload_from_string(
         buffer.getvalue(), content_type="application/octet-stream"
     )
-    return {
-        "rows_in": int(len(df)),
-        "rows_passed": int(len(result.passed)),
-        "rows_rejected": int(len(result.rejected)),
-    }
+    return summary
 
 
 def stage_curated(bucket, batch_id: str) -> dict:
