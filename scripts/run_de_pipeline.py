@@ -89,25 +89,34 @@ def stage_offline_store(
     table.time_partitioning = bigquery.TimePartitioning(field="date")
     client.create_table(table, exists_ok=True)
 
-    client.query(
-        f"DELETE FROM `{table_id}` WHERE batch_id = @batch_id",
-        job_config=bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("batch_id", "STRING", batch_id)
-            ]
-        ),
-    ).result()
-
+    # Load the batch into a temporary table, then swap it in with one atomic
+    # MERGE: dates present in the batch are fully replaced (partition
+    # overwrite), so re-uploading a corrected file doubles as backfill and
+    # duplicate uploads cannot double-count.
+    temp_table_id = f"{table_id}__load_{batch_id}"
     uri = f"gs://{bucket_name}/" + CURATED_BLOB.format(batch_id=batch_id)
     load_job = client.load_table_from_uri(
         uri,
-        table_id,
+        temp_table_id,
         job_config=bigquery.LoadJobConfig(
             source_format=bigquery.SourceFormat.PARQUET,
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            schema=schema,
         ),
     )
     load_job.result()
+
+    columns = ", ".join(field.name for field in schema)
+    merge_sql = (
+        f"MERGE `{table_id}` AS target "
+        f"USING `{temp_table_id}` AS source ON FALSE "
+        f"WHEN NOT MATCHED BY SOURCE "
+        f"AND target.date IN (SELECT DISTINCT date FROM `{temp_table_id}`) "
+        f"THEN DELETE "
+        f"WHEN NOT MATCHED THEN INSERT ({columns}) VALUES ({columns})"
+    )
+    client.query(merge_sql).result()
+    client.delete_table(temp_table_id, not_found_ok=True)
     return {"table": table_id, "loaded_rows": int(load_job.output_rows or 0)}
 
 

@@ -102,16 +102,23 @@ def test_stage_curated_writes_aggregated_parquet(bucket: FakeBucket) -> None:
     assert curated.iloc[0]["batch_id"] == "b1"
 
 
-def test_stage_offline_store_deletes_batch_then_loads(bucket: FakeBucket) -> None:
+def test_stage_offline_store_merges_batch_atomically(bucket: FakeBucket) -> None:
     bq = MagicMock()
     bq.load_table_from_uri.return_value.output_rows = 7
     summary = stage_offline_store(
         "b1", project="proj", dataset="dealight", bucket_name="fake-bucket", bq_client=bq
     )
     bq.create_table.assert_called_once()
-    delete_sql = bq.query.call_args.args[0]
-    assert "DELETE" in delete_sql and "batch_id" in delete_sql
-    bq.query.return_value.result.assert_called_once()
-    load_uri = bq.load_table_from_uri.call_args.args[0]
+    # Parquet is loaded into a per-batch temporary table first.
+    load_uri, temp_table_id = bq.load_table_from_uri.call_args.args[:2]
     assert load_uri == "gs://fake-bucket/curated/batch_id=b1/sales_daily.parquet"
+    assert temp_table_id == "proj.dealight.sales_daily__load_b1"
+    # One atomic MERGE replaces overlapping dates and inserts the new rows.
+    merge_sql = bq.query.call_args.args[0]
+    assert "MERGE" in merge_sql
+    assert "NOT MATCHED BY SOURCE" in merge_sql
+    assert temp_table_id in merge_sql
+    bq.query.return_value.result.assert_called_once()
+    # Temporary table is cleaned up afterwards.
+    bq.delete_table.assert_called_once_with(temp_table_id, not_found_ok=True)
     assert summary == {"table": "proj.dealight.sales_daily", "loaded_rows": 7}
