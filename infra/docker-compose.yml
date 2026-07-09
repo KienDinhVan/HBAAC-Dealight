@@ -31,6 +31,7 @@ x-airflow-common: &airflow-common
     BQ_DATASET: ${BQ_DATASET:-dealight}
     GOOGLE_APPLICATION_CREDENTIALS: /opt/project/secrets/gcp-key.json
     DQ_REJECT_ALERT_RATIO: ${DQ_REJECT_ALERT_RATIO:-0.1}
+    REDIS_URL: redis://redis:6379/0
   volumes:
     - ../dags:/opt/airflow/dags:ro
     - airflow-logs:/opt/airflow/logs
@@ -109,6 +110,19 @@ services:
       - >
         /usr/bin/mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
         /usr/bin/mc mb --ignore-existing local/"$${MLFLOW_BUCKET}"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   mlflow:
     build:
@@ -302,3 +316,4 @@ volumes:
   airflow-logs:
   prometheus-data:
   grafana-data:
+  redis-data:

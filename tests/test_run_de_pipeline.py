@@ -17,6 +17,7 @@ from scripts.run_de_pipeline import (
     STAGING_BLOB,
     stage_curated,
     stage_offline_store,
+    stage_online_store,
     stage_raw,
     stage_staging,
 )
@@ -162,3 +163,37 @@ def test_stage_offline_store_merges_batch_atomically(bucket: FakeBucket) -> None
     # Temporary table is cleaned up afterwards.
     bq.delete_table.assert_called_once_with(temp_table_id, not_found_ok=True)
     assert summary == {"table": "proj.dealight.sales_daily", "loaded_rows": 7}
+
+
+def test_stage_online_store_syncs_latest_row_per_item(bucket: FakeBucket) -> None:
+    from datetime import date
+
+    curated = pd.DataFrame(
+        {
+            "date": [date(2025, 1, 2), date(2025, 1, 3), date(2025, 1, 2)],
+            "item_code": ["SKU-1", "SKU-1", "SKU-2"],
+            "total_quantity": [5.0, 2.0, 1.0],
+            "total_sales": [50.0, 20.0, 5.0],
+            "total_cost": [20.0, 8.0, 2.0],
+            "txn_count": [2, 1, 1],
+            "batch_id": ["b1", "b1", "b1"],
+            "loaded_at": pd.Timestamp.now(tz="UTC"),
+        }
+    )
+    buffer = io.BytesIO()
+    curated.to_parquet(buffer, index=False)
+    bucket.store[CURATED_BLOB.format(batch_id="b1")] = buffer.getvalue()
+
+    r = MagicMock()
+    summary = stage_online_store(bucket, "b1", redis_client=r)
+    assert summary == {"items_synced": 2}
+    pipe = r.pipeline.return_value
+    pipe.execute.assert_called_once()
+    keys = {c.args[0] for c in pipe.hset.call_args_list}
+    assert keys == {"sales_daily:SKU-1", "sales_daily:SKU-2"}
+    sku1 = [
+        c.kwargs["mapping"] for c in pipe.hset.call_args_list if c.args[0] == "sales_daily:SKU-1"
+    ][0]
+    assert sku1["date"] == "2025-01-03"  # latest date wins
+    assert sku1["total_quantity"] == 2.0
+    assert sku1["batch_id"] == "b1"

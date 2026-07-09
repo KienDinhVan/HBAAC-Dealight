@@ -163,6 +163,38 @@ def stage_offline_store(
     return {"table": table_id, "loaded_rows": int(load_job.output_rows or 0)}
 
 
+ONLINE_STORE_KEY = "sales_daily:{item_code}"
+
+
+def stage_online_store(bucket, batch_id: str, *, redis_client=None) -> dict:
+    """Sync the latest curated row per item into Redis for low-latency serving."""
+    curated_bytes = bucket.blob(CURATED_BLOB.format(batch_id=batch_id)).download_as_bytes()
+    curated = pd.read_parquet(io.BytesIO(curated_bytes))
+    latest = curated.sort_values("date").groupby("item_code", as_index=False).tail(1)
+
+    if redis_client is None:
+        import redis
+
+        redis_client = redis.Redis.from_url(
+            os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        )
+    pipe = redis_client.pipeline()
+    for row in latest.itertuples(index=False):
+        pipe.hset(
+            ONLINE_STORE_KEY.format(item_code=row.item_code),
+            mapping={
+                "date": str(row.date),
+                "total_quantity": float(row.total_quantity),
+                "total_sales": float(row.total_sales),
+                "total_cost": float(row.total_cost),
+                "txn_count": int(row.txn_count),
+                "batch_id": batch_id,
+            },
+        )
+    pipe.execute()
+    return {"items_synced": int(len(latest))}
+
+
 def _gcs_bucket(bucket_name: str, project: str):
     from google.cloud import storage
 
@@ -174,7 +206,7 @@ def main() -> None:
     parser.add_argument(
         "--stage",
         required=True,
-        choices=["raw", "staging", "curated", "offline_store"],
+        choices=["raw", "staging", "curated", "offline_store", "online_store"],
     )
     parser.add_argument("--batch-id", required=True)
     parser.add_argument("--source-blob", default="")
@@ -201,6 +233,8 @@ def main() -> None:
             summary = stage_raw(bucket, args.batch_id, args.source_blob)
         elif args.stage == "staging":
             summary = stage_staging(bucket, args.batch_id)
+        elif args.stage == "online_store":
+            summary = stage_online_store(bucket, args.batch_id)
         else:
             summary = stage_curated(bucket, args.batch_id)
 

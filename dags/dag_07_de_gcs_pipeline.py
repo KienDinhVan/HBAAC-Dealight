@@ -31,5 +31,12 @@ with DAG(
     process_validate_to_staging = pipeline_task("process_validate_to_staging", "staging")
     build_curated = pipeline_task("build_curated", "curated")
     load_offline_store = pipeline_task("load_offline_store", "offline_store")
+    sync_online_store = pipeline_task("sync_online_store", "online_store")
 
-    ingest_raw >> process_validate_to_staging >> build_curated >> load_offline_store
+    (
+        ingest_raw
+        >> process_validate_to_staging
+        >> build_curated
+        >> load_offline_store
+        >> sync_online_store
+    )
