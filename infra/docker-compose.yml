@@ -29,6 +29,8 @@ x-airflow-common: &airflow-common
     GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
     GCS_BUCKET: ${GCS_BUCKET:-}
     BQ_DATASET: ${BQ_DATASET:-dealight}
+    BQ_BIGLAKE_CONNECTION: ${BQ_BIGLAKE_CONNECTION:-}
+    BQ_LOCATION: ${BQ_LOCATION:-asia-southeast1}
     GOOGLE_APPLICATION_CREDENTIALS: /opt/project/secrets/gcp-key.json
     DQ_REJECT_ALERT_RATIO: ${DQ_REJECT_ALERT_RATIO:-0.1}
     REDIS_URL: redis://redis:6379/0

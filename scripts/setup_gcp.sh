@@ -10,10 +10,11 @@ DATASET="dealight"
 SA_NAME="dealight-pipeline"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 KEY_PATH="infra/secrets/gcp-key.json"
+BIGLAKE_CONNECTION="dealight-biglake"
 
 echo ">> Enabling APIs"
 gcloud services enable storage.googleapis.com bigquery.googleapis.com \
-  --project "${PROJECT_ID}"
+  bigqueryconnection.googleapis.com --project "${PROJECT_ID}"
 
 echo ">> Creating service account ${SA_EMAIL} (idempotent)"
 gcloud iam service-accounts create "${SA_NAME}" \
@@ -59,6 +60,21 @@ gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
   --member "serviceAccount:${SA_EMAIL}" \
   --role roles/bigquery.dataEditor --condition=None 2>/dev/null || true
 
+echo ">> Creating BigLake connection ${BIGLAKE_CONNECTION} for Iceberg tables (idempotent)"
+bq --project_id "${PROJECT_ID}" mk --connection --location "${REGION}" \
+  --connection_type CLOUD_RESOURCE "${BIGLAKE_CONNECTION}" 2>/dev/null || true
+CONNECTION_SA="$(bq --project_id "${PROJECT_ID}" show --connection --format json \
+  "${PROJECT_ID}.${REGION}.${BIGLAKE_CONNECTION}" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["cloudResource"]["serviceAccountId"])')"
+echo ">> Granting bucket write access to connection SA ${CONNECTION_SA}"
+gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+  --member "serviceAccount:${CONNECTION_SA}" \
+  --role roles/storage.objectAdmin
+# The pipeline SA must be allowed to reference the connection in CREATE TABLE DDL.
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member "serviceAccount:${SA_EMAIL}" \
+  --role roles/bigquery.connectionUser --condition=None
+
 if [[ -f "${KEY_PATH}" ]]; then
   echo ">> Key already exists at ${KEY_PATH} — skipping (delete it to force a new key)"
 else
@@ -75,6 +91,8 @@ Done. Add to your .env:
   GCP_PROJECT_ID=${PROJECT_ID}
   GCS_BUCKET=${BUCKET}
   BQ_DATASET=${DATASET}
+  BQ_BIGLAKE_CONNECTION=${BIGLAKE_CONNECTION}
+  BQ_LOCATION=${REGION}
 
 Then rebuild + restart:
   docker compose -f infra/docker-compose.yml up -d --build forecast-api airflow-webserver airflow-scheduler
