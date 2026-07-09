@@ -154,11 +154,12 @@ def test_stage_offline_store_merges_batch_atomically(bucket: FakeBucket) -> None
     load_uri, temp_table_id = bq.load_table_from_uri.call_args.args[:2]
     assert load_uri == "gs://fake-bucket/curated/batch_id=b1/sales_daily.parquet"
     assert temp_table_id == "proj.dealight.sales_daily__load_b1"
-    # One atomic MERGE replaces overlapping dates and inserts the new rows.
-    merge_sql = bq.query.call_args.args[0]
-    assert "MERGE" in merge_sql
-    assert "NOT MATCHED BY SOURCE" in merge_sql
-    assert temp_table_id in merge_sql
+    # One atomic transaction replaces overlapping dates with the new rows.
+    swap_sql = bq.query.call_args.args[0]
+    assert "BEGIN TRANSACTION" in swap_sql
+    assert "DELETE" in swap_sql and "INSERT" in swap_sql
+    assert "COMMIT TRANSACTION" in swap_sql
+    assert temp_table_id in swap_sql
     bq.query.return_value.result.assert_called_once()
     # Temporary table is cleaned up afterwards.
     bq.delete_table.assert_called_once_with(temp_table_id, not_found_ok=True)

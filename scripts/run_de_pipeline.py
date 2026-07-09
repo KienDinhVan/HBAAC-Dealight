@@ -149,16 +149,18 @@ def stage_offline_store(
     )
     load_job.result()
 
+    # BigQuery rejects subqueries in MERGE WHEN clauses, so the swap is a
+    # multi-statement transaction instead (equally atomic).
     columns = ", ".join(field.name for field in schema)
-    merge_sql = (
-        f"MERGE `{table_id}` AS target "
-        f"USING `{temp_table_id}` AS source ON FALSE "
-        f"WHEN NOT MATCHED BY SOURCE "
-        f"AND target.date IN (SELECT DISTINCT date FROM `{temp_table_id}`) "
-        f"THEN DELETE "
-        f"WHEN NOT MATCHED THEN INSERT ({columns}) VALUES ({columns})"
+    swap_sql = (
+        f"BEGIN TRANSACTION; "
+        f"DELETE FROM `{table_id}` "
+        f"WHERE date IN (SELECT DISTINCT date FROM `{temp_table_id}`); "
+        f"INSERT INTO `{table_id}` ({columns}) "
+        f"SELECT {columns} FROM `{temp_table_id}`; "
+        f"COMMIT TRANSACTION;"
     )
-    client.query(merge_sql).result()
+    client.query(swap_sql).result()
     client.delete_table(temp_table_id, not_found_ok=True)
     return {"table": table_id, "loaded_rows": int(load_job.output_rows or 0)}
 
