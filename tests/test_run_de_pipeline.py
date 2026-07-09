@@ -166,6 +166,34 @@ def test_stage_offline_store_merges_batch_atomically(bucket: FakeBucket) -> None
     assert summary == {"table": "proj.dealight.sales_daily", "loaded_rows": 7}
 
 
+def test_stage_offline_store_creates_iceberg_table_when_connection_set() -> None:
+    bq = MagicMock()
+    bq.load_table_from_uri.return_value.output_rows = 7
+    summary = stage_offline_store(
+        "b1",
+        project="proj",
+        dataset="dealight",
+        bucket_name="fake-bucket",
+        biglake_connection="dealight-biglake",
+        location="asia-southeast1",
+        bq_client=bq,
+    )
+    # Iceberg tables are created via DDL, not the create_table API.
+    bq.create_table.assert_not_called()
+    ddl = bq.query.call_args_list[0].args[0]
+    assert "CREATE TABLE IF NOT EXISTS `proj.dealight.sales_daily`" in ddl
+    assert "table_format = 'ICEBERG'" in ddl
+    assert "WITH CONNECTION `proj.asia-southeast1.dealight-biglake`" in ddl
+    assert "storage_uri = 'gs://fake-bucket/warehouse/sales_daily'" in ddl
+    assert "CLUSTER BY date" in ddl
+    # The temp-table load and atomic swap are unchanged.
+    load_uri, temp_table_id = bq.load_table_from_uri.call_args.args[:2]
+    assert temp_table_id == "proj.dealight.sales_daily__load_b1"
+    swap_sql = bq.query.call_args_list[1].args[0]
+    assert "BEGIN TRANSACTION" in swap_sql
+    assert summary == {"table": "proj.dealight.sales_daily", "loaded_rows": 7}
+
+
 def test_stage_online_store_syncs_latest_row_per_item(bucket: FakeBucket) -> None:
     from datetime import date
 

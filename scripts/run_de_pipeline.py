@@ -112,7 +112,14 @@ def stage_curated(bucket, batch_id: str) -> dict:
 
 
 def stage_offline_store(
-    batch_id: str, *, project: str, dataset: str, bucket_name: str, bq_client=None
+    batch_id: str,
+    *,
+    project: str,
+    dataset: str,
+    bucket_name: str,
+    biglake_connection: str = "",
+    location: str = "asia-southeast1",
+    bq_client=None,
 ) -> dict:
     from google.cloud import bigquery
 
@@ -128,9 +135,24 @@ def stage_offline_store(
         bigquery.SchemaField("batch_id", "STRING"),
         bigquery.SchemaField("loaded_at", "TIMESTAMP"),
     ]
-    table = bigquery.Table(table_id, schema=schema)
-    table.time_partitioning = bigquery.TimePartitioning(field="date")
-    client.create_table(table, exists_ok=True)
+    if biglake_connection:
+        # BigQuery-managed Iceberg table: data + metadata live in GCS under
+        # warehouse/, written through the BigLake connection's service
+        # account. Iceberg tables support clustering but not time
+        # partitioning, and must be created via DDL.
+        column_defs = ", ".join(f"{field.name} {field.field_type}" for field in schema)
+        ddl = (
+            f"CREATE TABLE IF NOT EXISTS `{table_id}` ({column_defs}) "
+            f"CLUSTER BY date "
+            f"WITH CONNECTION `{project}.{location}.{biglake_connection}` "
+            f"OPTIONS (file_format = 'PARQUET', table_format = 'ICEBERG', "
+            f"storage_uri = 'gs://{bucket_name}/warehouse/{BQ_TABLE_NAME}')"
+        )
+        client.query(ddl).result()
+    else:
+        table = bigquery.Table(table_id, schema=schema)
+        table.time_partitioning = bigquery.TimePartitioning(field="date")
+        client.create_table(table, exists_ok=True)
 
     # Load the batch into a temporary table, then swap it in with one atomic
     # MERGE: dates present in the batch are fully replaced (partition
@@ -228,6 +250,8 @@ def main() -> None:
             project=args.project,
             dataset=args.dataset,
             bucket_name=args.bucket,
+            biglake_connection=os.environ.get("BQ_BIGLAKE_CONNECTION", ""),
+            location=os.environ.get("BQ_LOCATION", "asia-southeast1"),
         )
     else:
         bucket = _gcs_bucket(args.bucket, args.project)
