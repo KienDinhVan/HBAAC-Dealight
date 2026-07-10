@@ -182,3 +182,57 @@ class IngestRunStatusResponse(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     note: str | None = None
+
+
+class IngestTaskState(BaseModel):
+    task_id: str
+    state: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+
+
+class IngestRunTasksResponse(BaseModel):
+    dag_id: str
+    dag_run_id: str
+    state: str | None = None
+    tasks: list[IngestTaskState]
+
+
+class IngestBatchItem(BaseModel):
+    batch_id: str
+    created_at: datetime | None = None
+    rows_in: int
+    rows_passed: int
+    rows_rejected: int
+    reject_ratio: float
+
+
+class IngestBatchListResponse(BaseModel):
+    items: list[IngestBatchItem]
+
+
+class IngestDqDetailResponse(BaseModel):
+    batch_id: str
+    summary: dict
+    quarantine_preview: list[dict]
+    preview_truncated: bool
+
+
+class OfflineStoreBatchStat(BaseModel):
+    batch_id: str
+    row_count: int
+    min_date: str
+    max_date: str
+    loaded_at: str
+
+
+class OfflineStoreStatsResponse(BaseModel):
+    as_of: datetime | None = None
+    total_rows: int
+    batches: list[OfflineStoreBatchStat]
+
+
+class OnlineStoreItemResponse(BaseModel):
+    item_code: str
+    found: bool
+    record: dict[str, str] | None = None

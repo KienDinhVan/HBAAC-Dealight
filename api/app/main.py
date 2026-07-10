@@ -22,9 +22,11 @@ from api.app.agents.retrain import RetrainAgent
 from api.app.agents.sales import SalesAgent
 from api.app.agents.team import TeamLeadAgent
 from api.app.clients.airflow import AirflowClient
+from api.app.clients.bigquery import OfflineStoreClient
 from api.app.clients.duckdb_client import DuckDBClient
 from api.app.clients.gcs import GcsUploader
 from api.app.clients.openrouter import OpenRouterClient
+from api.app.clients.redis_store import OnlineStoreClient
 from api.app.config import get_settings
 from api.app.infra.approval import ApprovalStore
 from api.app.repository import ForecastRepository
@@ -95,6 +97,14 @@ async def _lifespan(app: FastAPI):
         GcsUploader(settings.gcs_bucket, project=settings.gcp_project_id or None)
         if settings.gcs_bucket
         else None
+    )
+    app.state.offline_store = (
+        OfflineStoreClient(settings.gcp_project_id, settings.bq_dataset)
+        if settings.gcp_project_id
+        else None
+    )
+    app.state.online_store = (
+        OnlineStoreClient(settings.redis_url) if settings.redis_url else None
     )
     app.state.duckdb = None
     app.state.team_lead = None
