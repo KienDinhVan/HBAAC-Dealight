@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: dealight
+resources:
+  - ../../base/forecast-api
+  - ../../base/web
+  - ../../base/airflow
+  - ../../base/mlflow
+  - ../../base/prometheus
+  - ../../base/grafana
+images:
+  - name: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/forecast-api
+    newTag: bootstrap
+  - name: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/web
+    newTag: bootstrap
+  - name: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/airflow
+    newTag: bootstrap
+  - name: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/mlflow
+    newTag: bootstrap
