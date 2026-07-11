@@ -15,3 +15,10 @@ wheels/
 
 # GCP service account keys — never commit
 infra/secrets/
+
+# Terraform / Terragrunt
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terragrunt-cache/
