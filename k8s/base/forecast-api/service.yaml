@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: forecast-api
+spec:
+  selector:
+    app: forecast-api
+  ports:
+    - port: 8000
+      targetPort: 8000
