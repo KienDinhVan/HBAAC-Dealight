@@ -21,6 +21,8 @@ resource "google_sql_database_instance" "pg" {
   region           = var.region
 
   settings {
+    # PG16 mặc định ENTERPRISE_PLUS — edition đó không cho shared-core tier.
+    edition           = "ENTERPRISE"
     tier              = "db-g1-small"
     availability_type = "ZONAL"
     disk_size         = 20
