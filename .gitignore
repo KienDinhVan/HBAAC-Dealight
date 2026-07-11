@@ -21,4 +21,5 @@ infra/secrets/
 *.tfstate
 *.tfstate.*
 *.tfplan
-.terragrunt-cache/.terraform.lock.hcl
+.terragrunt-cache/
+.terraform.lock.hcl
