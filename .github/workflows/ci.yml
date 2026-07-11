@@ -2,11 +2,12 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
   lint-and-unit-test:
-    runs-on: ubuntu-latest
+    runs-on: dealight-gke
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,5 +29,32 @@ jobs:
       - name: Unit and contract tests
         run: uv run pytest -q
 
-      - name: Validate Compose definition
-        run: docker compose --env-file .env.example -f infra/docker-compose.yml config --quiet
+  static-validate:
+    runs-on: dealight-gke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Install terragrunt + kustomize
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSLo "$HOME/.local/bin/terragrunt" \
+            https://github.com/gruntwork-io/terragrunt/releases/download/v0.69.10/terragrunt_linux_amd64
+          chmod +x "$HOME/.local/bin/terragrunt"
+          curl -fsSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz \
+            | tar xz -C "$HOME/.local/bin" kustomize
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: terraform fmt check
+        run: terraform fmt -check -recursive infra/terraform
+
+      - name: terragrunt hclfmt check
+        run: terragrunt hclfmt --check --working-dir infra/live
+
+      - name: kustomize build prod overlay
+        run: kustomize build k8s/overlays/prod > /dev/null
