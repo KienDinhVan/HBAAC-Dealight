@@ -1,0 +1,10 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+COPY --chown=airflow:root dags /opt/airflow/dags
+COPY --chown=airflow:root src /opt/project/src
+COPY --chown=airflow:root scripts /opt/project/scripts
+COPY --chown=airflow:root feature_registry.yaml /opt/project/feature_registry.yaml
+
+ENV PYTHONPATH=/opt/project/src:/opt/project
+WORKDIR /opt/project

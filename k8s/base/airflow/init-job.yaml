@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: airflow-init
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      serviceAccountName: airflow
+      restartPolicy: Never
+      containers:
+        - name: init
+          image: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/airflow:bootstrap
+          command:
+            - bash
+            - -c
+            - >
+              airflow db migrate &&
+              (airflow users create
+              --username admin --password "$AIRFLOW_ADMIN_PASSWORD"
+              --firstname GKE --lastname Admin --role Admin
+              --email admin@example.local || true) &&
+              airflow users reset-password --username admin --password "$AIRFLOW_ADMIN_PASSWORD"
+          envFrom:
+            - configMapRef:
+                name: platform-config
+            - secretRef:
+                name: platform-secrets
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
