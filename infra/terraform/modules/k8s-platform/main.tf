@@ -107,3 +107,19 @@ resource "kubernetes_config_map" "platform" {
     PYTHONPATH                   = "/opt/project/src:/opt/project"
   }
 }
+
+data "google_secret_manager_secret_version" "repo_pat" {
+  secret = "github-repo-pat"
+}
+
+# Kaniko clone repo private qua env GIT_USERNAME/GIT_PASSWORD (git context).
+resource "kubernetes_secret" "git_credentials" {
+  metadata {
+    name      = "git-credentials"
+    namespace = kubernetes_namespace.ci_builds.metadata[0].name
+  }
+  data = {
+    GIT_USERNAME = "x-access-token"
+    GIT_PASSWORD = data.google_secret_manager_secret_version.repo_pat.secret_data
+  }
+}

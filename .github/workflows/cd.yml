@@ -1,0 +1,89 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "src/**"
+      - "dags/**"
+      - "scripts/**"
+      - "frontend/**"
+      - "infra/airflow/**"
+      - "infra/mlflow/**"
+      - "feature_registry.yaml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/cd.yml"
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  AR: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight
+  GIT_CONTEXT: git://github.com/KienDinhVan/HBAAC-Dealight.git
+
+jobs:
+  build-and-deploy:
+    runs-on: dealight-gke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl + kustomize
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSLo "$HOME/.local/bin/kubectl" \
+            "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
+          chmod +x "$HOME/.local/bin/kubectl"
+          curl -fsSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz \
+            | tar xz -C "$HOME/.local/bin" kustomize
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Launch Kaniko builds (api, web, mlflow, airflow-base)
+        run: |
+          .github/scripts/kaniko_build.sh launch forecast-api api/Dockerfile ""
+          .github/scripts/kaniko_build.sh launch web Dockerfile frontend
+          .github/scripts/kaniko_build.sh launch mlflow Dockerfile infra/mlflow
+          .github/scripts/kaniko_build.sh launch airflow-base Dockerfile infra/airflow
+
+      - name: Wait for first wave
+        run: |
+          .github/scripts/kaniko_build.sh wait forecast-api
+          .github/scripts/kaniko_build.sh wait web
+          .github/scripts/kaniko_build.sh wait mlflow
+          .github/scripts/kaniko_build.sh wait airflow-base
+
+      - name: Build airflow (DAGs baked, FROM airflow-base)
+        run: |
+          .github/scripts/kaniko_build.sh launch airflow infra/airflow/Dockerfile.gke "" \
+            "--build-arg=BASE_IMAGE=${AR}/airflow-base:${GITHUB_SHA}"
+          .github/scripts/kaniko_build.sh wait airflow
+
+      - name: Bump image tags in prod overlay
+        run: |
+          cd k8s/overlays/prod
+          for img in forecast-api web airflow mlflow; do
+            kustomize edit set image "${AR}/${img}=${AR}/${img}:${GITHUB_SHA}"
+          done
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add kustomization.yaml
+          git commit -m "ci(cd): deploy ${GITHUB_SHA:0:7} [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Smoke — wait for ArgoCD sync + healthy API
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 5 \
+              http://forecast-api.dealight.svc.cluster.local:8000/health; then
+              echo "healthy"; exit 0
+            fi
+            echo "waiting ($i/60)"; sleep 10
+          done
+          echo "::error::forecast-api not healthy after 10m"; exit 1
