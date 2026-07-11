@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlflow
+  template:
+    metadata:
+      labels:
+        app: mlflow
+    spec:
+      serviceAccountName: mlflow
+      containers:
+        - name: mlflow
+          image: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/mlflow:bootstrap
+          command:
+            - mlflow
+            - server
+            - --host
+            - 0.0.0.0
+            - --port
+            - "5000"
+            - --allowed-hosts
+            - mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000
+            - --backend-store-uri
+            - $(MLFLOW_BACKEND_STORE_URI)
+            - --default-artifact-root
+            - $(MLFLOW_DEFAULT_ARTIFACT_ROOT)
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: platform-config
+            - secretRef:
+                name: platform-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi

@@ -1,0 +1,50 @@
+groups:
+  - name: sku-forecast-platform
+    rules:
+      - alert: ForecastApiDown
+        expr: up{job="sku-forecast-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Forecast API cannot be scraped
+
+      - alert: ForecastApiLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: API p95 latency exceeds one second
+
+      - alert: ForecastApiErrorRateHigh
+        expr: sum(rate(http_requests_total{status_code=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: API 5xx rate exceeds five percent
+
+      - alert: ForecastMissingSkus
+        expr: forecast_latest_missing_skus > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Latest forecast does not cover the SKU universe
+
+      - alert: ForecastNegativePrediction
+        expr: forecast_latest_negative_predictions > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Latest forecast contains negative quantities
+
+      - alert: ForecastDriftDetected
+        expr: forecast_latest_drift_detected > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Latest monitoring report detected drift
