@@ -2052,3 +2052,340 @@ git commit -m "feat(k8s): prod overlay + argocd platform application"
 ```
 
 <!-- PLAN-PART-4 -->
+
+---
+
+### Task 14: CI workflow trên ARC runners
+
+**Files:**
+- Modify: `.github/workflows/ci.yml`
+
+**Interfaces:**
+- Consumes: runner scale set label `dealight-gke` (Task 9).
+- Produces: CI = ruff + pytest + static IaC checks (`terraform fmt`, `terragrunt hclfmt --check`, `kustomize build`). KHÔNG còn job docker build/trivy — Autopilot cấm DinD; build image thuộc về cd.yml (Kaniko).
+
+- [ ] **Step 1: Ghi đè `.github/workflows/ci.yml`**
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-unit-test:
+    runs-on: dealight-gke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check api scripts tests src dags
+
+      - name: Unit and contract tests
+        run: uv run pytest -q
+
+  static-validate:
+    runs-on: dealight-gke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Install terragrunt + kustomize
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSLo "$HOME/.local/bin/terragrunt" \
+            https://github.com/gruntwork-io/terragrunt/releases/download/v0.69.10/terragrunt_linux_amd64
+          chmod +x "$HOME/.local/bin/terragrunt"
+          curl -fsSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz \
+            | tar xz -C "$HOME/.local/bin" kustomize
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: terraform fmt check
+        run: terraform fmt -check -recursive infra/terraform
+
+      - name: terragrunt hclfmt check
+        run: terragrunt hclfmt --check --working-dir infra/live
+
+      - name: kustomize build prod overlay
+        run: kustomize build k8s/overlays/prod > /dev/null
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add .github/workflows/ci.yml
+git commit -m "ci: move CI to ARC self-hosted runners + IaC static checks"
+```
+
+---
+
+### Task 15: CD workflow — Kaniko build/push + bump kustomize + smoke
+
+**Files:**
+- Create: `.github/workflows/cd.yml`
+- Create: `.github/scripts/kaniko_build.sh`
+- Modify: `infra/terraform/modules/k8s-platform/main.tf` (thêm Secret `ci-builds/git-credentials` cho Kaniko clone repo private)
+
+**Interfaces:**
+- Consumes: KSA `kaniko-builder` + ConfigMap `kaniko-docker-config` (Task 7), RBAC runner→Jobs ns `ci-builds` (Task 9), AR repo (Task 5), overlay `k8s/overlays/prod` (Task 13).
+- Produces: images `{forecast-api,web,airflow-base,airflow,mlflow}:<git-sha>` trong AR; commit `ci(cd): deploy <sha> [skip ci]` bump tag overlay; smoke in-cluster `http://forecast-api.dealight.svc.cluster.local:8000/health`.
+
+- [ ] **Step 1: Thêm vào cuối `infra/terraform/modules/k8s-platform/main.tf`**
+
+```hcl
+data "google_secret_manager_secret_version" "repo_pat" {
+  secret = "github-repo-pat"
+}
+
+# Kaniko clone repo private qua env GIT_USERNAME/GIT_PASSWORD (git context).
+resource "kubernetes_secret" "git_credentials" {
+  metadata {
+    name      = "git-credentials"
+    namespace = kubernetes_namespace.ci_builds.metadata[0].name
+  }
+  data = {
+    GIT_USERNAME = "x-access-token"
+    GIT_PASSWORD = data.google_secret_manager_secret_version.repo_pat.secret_data
+  }
+}
+```
+
+- [ ] **Step 2: Viết `.github/workflows/cd.yml`** — runner in-cluster tạo Kaniko Jobs qua kubectl (in-cluster config), đợi xong, bump tag, push, smoke:
+
+```yaml
+name: CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "src/**"
+      - "dags/**"
+      - "scripts/**"
+      - "frontend/**"
+      - "infra/airflow/**"
+      - "infra/mlflow/**"
+      - "feature_registry.yaml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/cd.yml"
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  AR: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight
+  GIT_CONTEXT: git://github.com/KienDinhVan/HBAAC-Dealight.git
+
+jobs:
+  build-and-deploy:
+    runs-on: dealight-gke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl + kustomize
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSLo "$HOME/.local/bin/kubectl" \
+            "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
+          chmod +x "$HOME/.local/bin/kubectl"
+          curl -fsSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz \
+            | tar xz -C "$HOME/.local/bin" kustomize
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Launch Kaniko builds (api, web, mlflow, airflow-base)
+        run: |
+          .github/scripts/kaniko_build.sh launch forecast-api api/Dockerfile ""
+          .github/scripts/kaniko_build.sh launch web Dockerfile frontend
+          .github/scripts/kaniko_build.sh launch mlflow Dockerfile infra/mlflow
+          .github/scripts/kaniko_build.sh launch airflow-base Dockerfile infra/airflow
+
+      - name: Wait for first wave
+        run: |
+          .github/scripts/kaniko_build.sh wait forecast-api
+          .github/scripts/kaniko_build.sh wait web
+          .github/scripts/kaniko_build.sh wait mlflow
+          .github/scripts/kaniko_build.sh wait airflow-base
+
+      - name: Build airflow (DAGs baked, FROM airflow-base)
+        run: |
+          .github/scripts/kaniko_build.sh launch airflow infra/airflow/Dockerfile.gke "" \
+            "--build-arg=BASE_IMAGE=${AR}/airflow-base:${GITHUB_SHA}"
+          .github/scripts/kaniko_build.sh wait airflow
+
+      - name: Bump image tags in prod overlay
+        run: |
+          cd k8s/overlays/prod
+          for img in forecast-api web airflow mlflow; do
+            kustomize edit set image "${AR}/${img}=${AR}/${img}:${GITHUB_SHA}"
+          done
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add kustomization.yaml
+          git commit -m "ci(cd): deploy ${GITHUB_SHA:0:7} [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Smoke — wait for ArgoCD sync + healthy API
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 5 \
+              http://forecast-api.dealight.svc.cluster.local:8000/health; then
+              echo "healthy"; exit 0
+            fi
+            echo "waiting ($i/60)"; sleep 10
+          done
+          echo "::error::forecast-api not healthy after 10m"; exit 1
+```
+
+- [ ] **Step 3: Viết `.github/scripts/kaniko_build.sh`** (chmod +x)
+
+```bash
+#!/usr/bin/env bash
+# Launch/wait Kaniko build Jobs in ns ci-builds (runner has RBAC from Task 9).
+# Usage: kaniko_build.sh launch <image> <dockerfile> <context-sub-path> [extra-arg...]
+#        kaniko_build.sh wait <image>
+set -euo pipefail
+
+MODE="${1:?launch|wait}" IMAGE="${2:?image name}"
+NS=ci-builds
+JOB="kaniko-${IMAGE}-${GITHUB_SHA:0:7}"
+
+if [ "$MODE" = launch ]; then
+  DOCKERFILE="${3:?dockerfile}" SUBPATH="${4:-}"
+  shift 4 2>/dev/null || shift 3
+  ARGS="            - --context=${GIT_CONTEXT}#refs/heads/main#${GITHUB_SHA}
+            - --dockerfile=${DOCKERFILE}
+            - --destination=${AR}/${IMAGE}:${GITHUB_SHA}
+            - --cache=true"
+  if [ -n "$SUBPATH" ]; then
+    ARGS="${ARGS}
+            - --context-sub-path=${SUBPATH}"
+  fi
+  for extra in "$@"; do
+    ARGS="${ARGS}
+            - ${extra}"
+  done
+
+  kubectl -n "$NS" delete job "$JOB" --ignore-not-found
+  kubectl apply -f - <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB}
+  namespace: ${NS}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 7200
+  template:
+    spec:
+      serviceAccountName: kaniko-builder
+      restartPolicy: Never
+      containers:
+        - name: kaniko
+          image: gcr.io/kaniko-project/executor:v1.23.2
+          args:
+${ARGS}
+          envFrom:
+            - secretRef:
+                name: git-credentials
+          volumeMounts:
+            - name: docker-config
+              mountPath: /kaniko/.docker
+          resources:
+            requests:
+              cpu: "1"
+              memory: 4Gi
+              ephemeral-storage: 10Gi
+      volumes:
+        - name: docker-config
+          configMap:
+            name: kaniko-docker-config
+EOF
+  echo "launched ${JOB}"
+  exit 0
+fi
+
+# wait mode
+t=0
+while true; do
+  s="$(kubectl -n "$NS" get job "$JOB" -o jsonpath='{.status.succeeded}' 2>/dev/null || true)"
+  f="$(kubectl -n "$NS" get job "$JOB" -o jsonpath='{.status.failed}' 2>/dev/null || true)"
+  if [ "${s:-0}" -ge 1 ]; then echo "${JOB} OK"; exit 0; fi
+  if [ "${f:-0}" -ge 1 ]; then
+    echo "::error::${JOB} failed"
+    kubectl -n "$NS" logs "job/${JOB}" --tail=200 || true
+    exit 1
+  fi
+  t=$((t + 15))
+  if [ "$t" -gt 2400 ]; then echo "::error::${JOB} timeout 40m"; exit 1; fi
+  sleep 15
+done
+```
+
+- [ ] **Step 4: Validate module + syntax, commit**
+
+```bash
+terraform -chdir=infra/terraform/modules/k8s-platform init -backend=false && \
+terraform -chdir=infra/terraform/modules/k8s-platform validate
+bash -n .github/scripts/kaniko_build.sh && chmod +x .github/scripts/kaniko_build.sh
+git add .github/workflows/cd.yml .github/scripts/kaniko_build.sh infra/terraform/modules/k8s-platform
+git commit -m "feat(cicd): CD pipeline — Kaniko builds + kustomize bump + in-cluster smoke"
+```
+
+**Lưu ý:** smoke chỉ chứng minh service healthy sau sync (ArgoCD poll ≤3 phút) — `/version` không chứa git sha nên không phân biệt được image cũ/mới; chấp nhận cho demo (ghi trong runbook).
+
+---
+
+### Task 16: Runbook deploy/destroy + verify toàn trình
+
+**Files:**
+- Create: `docs/GKE_DEPLOY_RUNBOOK.md`
+
+**Interfaces:**
+- Consumes: mọi task trước.
+- Produces: tài liệu vận hành duy nhất: prerequisites → bootstrap → secret values → `terragrunt run-all apply` → first deploy qua CD → access/port-forward → rollback → destroy → chi phí.
+
+- [ ] **Step 1: Viết `docs/GKE_DEPLOY_RUNBOOK.md`** với các mục:
+  1. **Prerequisites** (GitHub App ARC + PAT — theo phần Prerequisites của plan này).
+  2. **Bootstrap**: `scripts/bootstrap_gke_platform.sh gen-lang-client-0222711301` + nạp 6 secret values.
+  3. **Provision**: `cd infra/live/prod && terragrunt run-all apply` (dependency tự resolve: network → gke/cloudsql/memorystore/registry → iam → k8s-platform → argocd/arc). Thời gian dự kiến ~30–40 phút (GKE + Cloud SQL).
+  4. **First deploy**: pods `dealight` sẽ ImagePullBackOff với tag `bootstrap` cho tới khi CD chạy lần đầu — push commit chạm paths của cd.yml lên `main` → Kaniko build → bump tag → ArgoCD sync → healthy.
+  5. **Access**: Ingress IP (`kubectl -n dealight get ingress web`), port-forward Airflow/Grafana/MLflow/Prometheus/ArgoCD + lệnh lấy password (ArgoCD initial secret, `platform-secrets` keys).
+  6. **Rollback**: `git revert` commit bump tag → ArgoCD tự đưa image về bản cũ.
+  7. **Destroy**: `terragrunt run-all destroy` + caveat: data lake GCS/BigQuery nằm ngoài cluster, không mất; secrets Secret Manager giữ.
+  8. **Chi phí**: ~$200–290/tháng khi bật liên tục.
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add docs/GKE_DEPLOY_RUNBOOK.md
+git commit -m "docs: GKE deploy/destroy runbook"
+```
+
+<!-- PLAN-PART-5 -->
