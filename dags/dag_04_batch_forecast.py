@@ -30,7 +30,9 @@ with DAG(
         "forecast_date": "2025-09-05",
         "max_horizon": 56,
         "lookback_days": 200,
-        "sku_lookback_days": 0,
+        # Forecast only the active assortment. Using every historical SKU builds
+        # a multi-million-row dense panel and can evict the LocalExecutor pod.
+        "sku_lookback_days": 30,
     },
     tags=["forecasting", "serving", "sprint-05"],
 ) as dag:
