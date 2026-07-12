@@ -26,6 +26,14 @@ resource "google_storage_bucket_iam_member" "mlflow_writer" {
   member = "serviceAccount:${google_service_account.mlflow.email}"
 }
 
+# MLflow client upload artifact trực tiếp từ task Airflow (WI → pipeline GSA),
+# không đi qua mlflow server — pipeline GSA cũng cần ghi bucket artifacts.
+resource "google_storage_bucket_iam_member" "pipeline_mlflow_writer" {
+  bucket = google_storage_bucket.mlflow_artifacts.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${data.google_service_account.pipeline.email}"
+}
+
 resource "google_artifact_registry_repository_iam_member" "ci_push" {
   repository = var.registry_repository_id
   location   = var.region
