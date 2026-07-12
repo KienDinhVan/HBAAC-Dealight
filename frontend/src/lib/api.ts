@@ -132,8 +132,9 @@ export interface ForecastSummary {
   max_predicted_quantity: number
 }
 
-export async function fetchLatestRun(): Promise<ForecastRun> {
+export async function fetchLatestRun(): Promise<ForecastRun | null> {
   const res = await fetch('/api/forecast-runs/latest')
+  if (res.status === 404) return null
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
 }

@@ -54,6 +54,14 @@ export default function DashboardPage() {
     setError(null)
     try {
       const latest = await fetchLatestRun()
+      if (!latest) {
+        setRun(null)
+        setSummary(null)
+        setTopSkus([])
+        setTrend([])
+        setMonitoring(null)
+        return
+      }
       setRun(latest)
       const td = targetDate || nextDay(latest.forecast_date)
       setTargetDate(td)
@@ -176,6 +184,13 @@ export default function DashboardPage() {
         <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-700/40 bg-red-950/40 px-3 py-2 text-sm text-red-300">
           <AlertTriangle className="h-4 w-4" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {!error && !loading && !run && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>No successful forecast yet. Run training and batch forecast to populate the dashboard.</span>
         </div>
       )}
 

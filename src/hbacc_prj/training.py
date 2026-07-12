@@ -146,6 +146,17 @@ def baseline_predictions(validation: pd.DataFrame) -> dict[str, np.ndarray]:
     }
 
 
+def _verify_logged_model(
+    model_uri: str, x_validation: pd.DataFrame, expected: np.ndarray
+) -> None:
+    loaded_model = mlflow.lightgbm.load_model(model_uri)
+    reload_prediction = clip_negative_predictions(
+        loaded_model.predict(x_validation.head(10))
+    )
+    if not np.allclose(reload_prediction, expected[:10]):
+        raise ValueError("Reloaded MLflow model predictions do not match")
+
+
 def _git_commit() -> str:
     configured_commit = os.getenv("SOURCE_GIT_COMMIT")
     if configured_commit:
@@ -277,12 +288,9 @@ def train_and_log(
         )
         run_id = run.info.run_id
 
-    loaded_model = mlflow.lightgbm.load_model(f"runs:/{run_id}/model")
-    reload_prediction = clip_negative_predictions(
-        loaded_model.predict(x_validation.head(10))
-    )
-    if not np.allclose(reload_prediction, predicted[:10]):
-        raise ValueError("Reloaded MLflow model predictions do not match")
+    # MLflow 3 stores logged models under a models:/m-... URI instead of the
+    # legacy runs:/<run_id>/<artifact_path> location.
+    _verify_logged_model(model_info.model_uri, x_validation, predicted)
 
     model_version: str | None = None
     if passes_rule:

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from hbacc_prj.training import (
+    _verify_logged_model,
     build_lgb_dataset,
     calculate_smape,
     calculate_wape,
@@ -89,3 +90,24 @@ def test_lightgbm_trains_and_predicts_nonnegative_values() -> None:
     assert not np.isnan(prediction).any()
     assert (prediction >= 0).all()
     assert model.booster_ is not None
+
+
+def test_verify_logged_model_uses_mlflow_logged_model_uri(monkeypatch) -> None:
+    expected = np.array([1.0, 2.0, 3.0])
+    validation = pd.DataFrame({"feature": [10.0, 20.0, 30.0]})
+    requested_uris: list[str] = []
+
+    class ReloadedModel:
+        def predict(self, frame: pd.DataFrame) -> np.ndarray:
+            assert frame.equals(validation)
+            return expected
+
+    def load_model(model_uri: str) -> ReloadedModel:
+        requested_uris.append(model_uri)
+        return ReloadedModel()
+
+    monkeypatch.setattr("hbacc_prj.training.mlflow.lightgbm.load_model", load_model)
+
+    _verify_logged_model("models:/m-test", validation, expected)
+
+    assert requested_uris == ["models:/m-test"]
