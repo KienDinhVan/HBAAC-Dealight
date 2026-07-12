@@ -104,3 +104,52 @@ class ForecastRepository:
                     (run["run_id"], target_date),
                 )
                 return run, cursor.fetchone()
+
+    _MONITORING_COLUMNS = (
+        "report_id, run_id, generated_at, status, "
+        "forecast_row_count, sku_count, horizon_count, "
+        "missing_sku_count, negative_prediction_count, "
+        "prediction_min, prediction_mean, prediction_max, "
+        "zero_ratio, actual_row_count, accuracy_metrics, "
+        "drift_detected, drift_metrics, alerts, "
+        "data_drift_report_path, prediction_drift_report_path"
+    )
+
+    def latest_monitoring_report(self) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT {self._MONITORING_COLUMNS}
+                    FROM monitoring.forecast_reports
+                    ORDER BY generated_at DESC LIMIT 1
+                    """
+                )
+                return cursor.fetchone()
+
+    def list_monitoring_reports(self, limit: int = 20, offset: int = 0) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT {self._MONITORING_COLUMNS}
+                    FROM monitoring.forecast_reports
+                    ORDER BY generated_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (limit, offset),
+                )
+                return list(cursor.fetchall())
+
+    def get_monitoring_report(self, report_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT {self._MONITORING_COLUMNS}
+                    FROM monitoring.forecast_reports
+                    WHERE report_id = %s
+                    """,
+                    (report_id,),
+                )
+                return cursor.fetchone()

@@ -23,3 +23,6 @@ infra/secrets/
 *.tfplan
 .terragrunt-cache/
 .terraform.lock.hcl
+frontend/node_modules/
+frontend/dist/
+*.pem

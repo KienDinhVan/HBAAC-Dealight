@@ -1,0 +1,57 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "panels": [
+    {
+      "title": "API Requests / sec",
+      "type": "timeseries",
+      "targets": [{"expr": "sum(rate(http_requests_total[5m]))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+    },
+    {
+      "title": "API p95 Latency (s)",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
+    },
+    {
+      "title": "API 5xx Rate",
+      "type": "timeseries",
+      "targets": [{"expr": "sum(rate(http_requests_total{status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1)", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
+    },
+    {
+      "title": "Forecast Rows",
+      "type": "stat",
+      "targets": [{"expr": "forecast_latest_row_count", "refId": "A"}],
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 8}
+    },
+    {
+      "title": "Missing SKUs",
+      "type": "stat",
+      "targets": [{"expr": "forecast_latest_missing_skus", "refId": "A"}],
+      "gridPos": {"h": 7, "w": 6, "x": 6, "y": 8}
+    },
+    {
+      "title": "Negative Predictions",
+      "type": "stat",
+      "targets": [{"expr": "forecast_latest_negative_predictions", "refId": "A"}],
+      "gridPos": {"h": 7, "w": 6, "x": 12, "y": 8}
+    },
+    {
+      "title": "Drift Detected",
+      "type": "stat",
+      "targets": [{"expr": "forecast_latest_drift_detected", "refId": "A"}],
+      "gridPos": {"h": 7, "w": 6, "x": 18, "y": 8}
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["forecasting", "sprint-07"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "SKU Demand Observability",
+  "uid": "sku-demand-observability",
+  "version": 1
+}

@@ -80,6 +80,9 @@ class FakeRepository:
             "max_predicted_quantity": 40.0,
         }
 
+    def latest_monitoring_report(self) -> dict[str, Any] | None:
+        return None
+
 
 class BrokenRepository:
     """Simulates a database outage so we can assert no stacktrace leaks."""
@@ -99,6 +102,9 @@ class BrokenRepository:
         raise RuntimeError(self._LEAK)
 
     def summary(self, *args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError(self._LEAK)
+
+    def latest_monitoring_report(self) -> Any:
         raise RuntimeError(self._LEAK)
 
 
@@ -432,7 +438,7 @@ def test_openapi_document_is_well_formed(client: TestClient) -> None:
     assert response.status_code == 200
     spec = response.json()
     assert spec["openapi"].startswith("3.")
-    assert spec["info"]["title"] == "SKU Forecast API"
+    assert spec["info"]["title"] == "HBAAC-Dealight Workspace API"
     paths = spec["paths"]
     for path in (
         "/health",
