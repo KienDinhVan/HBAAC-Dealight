@@ -4,7 +4,7 @@ __pycache__
 *.pyc
 .pytest_cache
 .ruff_cache
-data/raw
+# data/raw NOT ignored: GKE airflow image bakes train.csv (dag_01 reads it locally).
 data/processed
 data/artifacts/*
 !data/artifacts/submission_FINAL_twostage_top300_lb730_s7_b1200_seedens20_alpha0.575_keysku_cautious_mapoldnew_a0.05.csv
