@@ -12,6 +12,54 @@ resource "helm_release" "argocd" {
         "server.insecure" = true
       }
     }
+    controller = {
+      resources = {
+        requests = { cpu = "250m", memory = "512Mi" }
+        limits   = { cpu = "1", memory = "1Gi" }
+      }
+    }
+    repoServer = {
+      resources = {
+        requests = { cpu = "100m", memory = "256Mi" }
+        limits   = { cpu = "500m", memory = "512Mi" }
+      }
+    }
+    server = {
+      resources = {
+        requests = { cpu = "50m", memory = "128Mi" }
+        limits   = { cpu = "250m", memory = "256Mi" }
+      }
+      ingress = {
+        enabled = true
+        annotations = {
+          "kubernetes.io/ingress.class" = "gce"
+        }
+      }
+    }
+    applicationSet = {
+      resources = {
+        requests = { cpu = "50m", memory = "128Mi" }
+        limits   = { cpu = "250m", memory = "256Mi" }
+      }
+    }
+    notifications = {
+      resources = {
+        requests = { cpu = "50m", memory = "128Mi" }
+        limits   = { cpu = "250m", memory = "256Mi" }
+      }
+    }
+    dex = {
+      resources = {
+        requests = { cpu = "50m", memory = "128Mi" }
+        limits   = { cpu = "250m", memory = "256Mi" }
+      }
+    }
+    redis = {
+      resources = {
+        requests = { cpu = "50m", memory = "128Mi" }
+        limits   = { cpu = "250m", memory = "256Mi" }
+      }
+    }
   })]
 }
 
