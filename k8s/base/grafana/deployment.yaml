@@ -29,6 +29,12 @@ spec:
                 secretKeyRef:
                   name: platform-secrets
                   key: GF_SECURITY_ADMIN_PASSWORD
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
           volumeMounts:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
