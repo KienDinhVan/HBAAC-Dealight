@@ -10,6 +10,8 @@ on:
       - "src/**"
       - "dags/**"
       - "scripts/**"
+      - "datasets/**"
+      - "data/raw/**"
       - "frontend/**"
       - "infra/airflow/**"
       - "infra/mlflow/**"
