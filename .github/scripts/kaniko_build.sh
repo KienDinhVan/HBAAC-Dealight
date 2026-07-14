@@ -72,7 +72,11 @@ while true; do
   s="$(kubectl -n "$NS" get job "$JOB" -o jsonpath='{.status.succeeded}' 2>/dev/null || true)"
   f="$(kubectl -n "$NS" get job "$JOB" -o jsonpath='{.status.failed}' 2>/dev/null || true)"
   failed_condition="$(kubectl -n "$NS" get job "$JOB" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)"
-  if [ "${s:-0}" -ge 1 ]; then echo "${JOB} OK"; exit 0; fi
+  if [ "${s:-0}" -ge 1 ]; then
+    echo "${JOB} OK"
+    kubectl -n "$NS" delete job "$JOB" --ignore-not-found --wait=false >/dev/null
+    exit 0
+  fi
   if [ "$failed_condition" = "True" ]; then
     echo "::error::${JOB} failed after ${f:-0} attempt(s)"
     kubectl -n "$NS" logs "job/${JOB}" --tail=200 || true
