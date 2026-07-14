@@ -11,6 +11,13 @@ resource "helm_release" "argocd" {
       params = {
         "server.insecure" = true
       }
+      cm = {
+        "accounts.kien" = "login"
+        "exec.enabled"  = "true"
+      }
+      rbac = {
+        "policy.csv" = "p, role:admin, exec, create, */*, allow\ng, kien, role:admin"
+      }
     }
     controller = {
       resources = {
@@ -30,7 +37,8 @@ resource "helm_release" "argocd" {
         limits   = { cpu = "250m", memory = "256Mi" }
       }
       ingress = {
-        enabled = true
+        enabled  = true
+        hostname = "argocd.35.190.18.31.nip.io"
         annotations = {
           "kubernetes.io/ingress.class" = "gce"
         }
