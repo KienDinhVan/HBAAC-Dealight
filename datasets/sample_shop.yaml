@@ -1,0 +1,14 @@
+name: sample_shop
+source:
+  type: file
+  location: data/raw/sample_shop.csv
+  format: csv
+mapping:
+  entity_id: store_item
+  ds: sale_date
+  quantity: units_sold
+  attrs: [unit_price]
+schedule: "0 3 * * *"
+training:
+  schedule: "0 5 * * 0"
+  validation_days: 14

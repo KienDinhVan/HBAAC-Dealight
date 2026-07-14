@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 from pathlib import Path
@@ -13,7 +14,35 @@ STAGES = ("ingest", "features", "train", "forecast", "monitor")
 
 
 def _data_root() -> str:
-    return os.environ.get("DATA_ROOT", os.environ.get("GCS_DATA_ROOT", "data"))
+    if root := os.environ.get("DATA_ROOT"):
+        return root
+    if root := os.environ.get("GCS_DATA_ROOT"):
+        return root
+    if bucket := os.environ.get("GCS_BUCKET"):
+        return f"gs://{bucket}"
+    return "data"
+
+
+def _write_canonical(canonical, dataset: str, batch_id: str) -> None:
+    root = _data_root().rstrip("/")
+    relative = f"raw/{dataset}/{batch_id}/canonical.parquet"
+    if root.startswith("gs://"):
+        from google.cloud import storage
+
+        bucket_and_prefix = root.removeprefix("gs://")
+        bucket, _, prefix = bucket_and_prefix.partition("/")
+        blob_name = "/".join(part for part in (prefix, relative) if part)
+        payload = io.BytesIO()
+        canonical.to_parquet(payload, index=False)
+        payload.seek(0)
+        storage.Client().bucket(bucket).blob(blob_name).upload_from_file(
+            payload, content_type="application/octet-stream"
+        )
+        return
+
+    destination = Path(root) / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    canonical.to_parquet(destination, index=False)
 
 
 def run_stage(cfg: DatasetConfig, stage: str, batch_id: str) -> None:
@@ -24,9 +53,7 @@ def run_stage(cfg: DatasetConfig, stage: str, batch_id: str) -> None:
         # cannot write as a zero-field struct. JSON-encode it so parquet
         # writing is safe regardless of whether attrs are configured.
         canonical = canonical.assign(attrs=canonical["attrs"].map(json.dumps))
-        dest = Path(_data_root()) / "raw" / cfg.name / batch_id
-        dest.mkdir(parents=True, exist_ok=True)
-        canonical.to_parquet(dest / "canonical.parquet", index=False)
+        _write_canonical(canonical, cfg.name, batch_id)
         return
     if stage == "features":
         from hbacc_prj.features import build_features_for_dataset
@@ -53,7 +80,8 @@ def main() -> None:
     ap.add_argument("--stage", required=True, choices=STAGES)
     ap.add_argument("--batch-id", default="manual")
     args = ap.parse_args()
-    cfg = load_dataset_config(Path("datasets") / f"{args.dataset}.yaml")
+    datasets_dir = Path(os.environ.get("DATASETS_DIR", "datasets"))
+    cfg = load_dataset_config(datasets_dir / f"{args.dataset}.yaml")
     run_stage(cfg, args.stage, args.batch_id)
 
 

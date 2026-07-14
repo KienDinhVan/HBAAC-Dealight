@@ -6,13 +6,14 @@ from typing import Callable
 import pandas as pd
 
 from hbacc_prj import hooks
-from hbacc_prj.connectors import file_source
+from hbacc_prj.connectors import api_source, database_source, file_source
 from hbacc_prj.connectors.normalize import normalize
 from hbacc_prj.dataset_config import DatasetConfig, SourceConfig
 
 _CONNECTORS: dict[str, Callable[[SourceConfig], pd.DataFrame]] = {
     "file": file_source.fetch,
-    # "database" and "api" are registered by Task 7.
+    "database": database_source.fetch,
+    "api": api_source.fetch,
 }
 
 

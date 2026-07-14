@@ -14,6 +14,7 @@ RUN uv sync --frozen --no-dev
 
 COPY api ./api
 COPY scripts ./scripts
+COPY datasets ./datasets
 COPY data/artifacts ./data/artifacts
 
 EXPOSE 8000

@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from hbacc_prj.dataset_config import ConfigError, DatasetConfig, load_all_dataset_configs, load_dataset_config
+from hbacc_prj.dataset_config import (
+    ConfigError,
+    load_all_dataset_configs,
+    load_dataset_config,
+)
 
 VALID = """
 name: sample_ds
