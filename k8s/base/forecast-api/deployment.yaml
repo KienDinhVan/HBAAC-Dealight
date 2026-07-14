@@ -18,6 +18,9 @@ spec:
           image: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/forecast-api:bootstrap
           ports:
             - containerPort: 8000
+          env:
+            - name: PYTHONPATH
+              value: /app/src:/app
           envFrom:
             - configMapRef:
                 name: platform-config
