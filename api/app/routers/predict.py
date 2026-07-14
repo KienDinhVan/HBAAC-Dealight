@@ -23,6 +23,7 @@ _logger = logging.getLogger(__name__)
 
 REQUIRED_COLUMNS = {"Date", "ItemCode"}
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+FORECAST_DAG_ID = "forecast_hbaac_sku"
 
 # In-memory job registry. Replaced by Postgres/Redis in production rollout.
 _JOBS: dict[str, dict[str, Any]] = {}
@@ -75,7 +76,7 @@ async def predict_csv(
     target.write_bytes(raw)
     try:
         result = await airflow.trigger_dag(
-            "dag_04_batch_forecast",
+            FORECAST_DAG_ID,
             conf={"csv_path": str(target), "run_id": job_id},
             note=f"Inline predict overflow ({rows} rows)",
         )
@@ -114,7 +115,7 @@ async def get_job(
     if not dag_run_id:
         return PredictJobStatusResponse(job_id=job_id, status=job["status"])
     try:
-        run = await airflow.get_dag_run("dag_04_batch_forecast", dag_run_id)
+        run = await airflow.get_dag_run(FORECAST_DAG_ID, dag_run_id)
     except Exception as exc:  # noqa: BLE001
         return PredictJobStatusResponse(
             job_id=job_id, status="error", dag_run_id=dag_run_id, detail=str(exc)

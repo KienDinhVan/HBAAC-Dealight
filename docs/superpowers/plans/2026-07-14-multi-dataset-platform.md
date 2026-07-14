@@ -10,6 +10,20 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-14-multi-dataset-platform-design.md`
 
+## Execution Status (2026-07-14)
+
+- Tasks 1-9 implemented; all plan checkboxes below are complete.
+- Golden parity: canonical HBAAC daily net quantity matches the legacy path on
+  the 5,000-row fixture in `tests/load/train_sample.csv`.
+- GKE gate: `ingest_hbaac_sku` succeeded in Airflow and wrote canonical
+  Parquet objects under `gs://gen-lang-client-0222711301-dealight-data/raw/hbaac_sku/`.
+- Registered datasets: `hbaac_sku` and `sample_shop`; Airflow generates five
+  stage DAGs for each dataset.
+- Legacy DAG files `dag_01` through `dag_05` were removed after the gate passed;
+  API retrain/predict call sites now use the HBAAC factory DAG IDs.
+- Multi-dataset API is available at `GET /api/v1/datasets` and
+  `GET /api/v1/{dataset}/forecast/summary`.
+
 ## Global Constraints
 
 - Canonical schema, exact names: `entity_id` (str), `ds` (date), `quantity` (float), `attrs` (dict/JSON) — spec §1.
@@ -31,7 +45,7 @@
 **Interfaces:**
 - Produces: `DatasetConfig` dataclass; `load_dataset_config(path: str | Path) -> DatasetConfig`; `load_all_dataset_configs(dir_path: str | Path) -> list[DatasetConfig]` (skips+logs invalid files); `ConfigError(ValueError)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_dataset_config.py
@@ -100,12 +114,12 @@ def test_load_all_skips_invalid(tmp_path, caplog):
     assert "broken.yaml" in caplog.text
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_dataset_config.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'hbacc_prj.dataset_config'`
 
-- [ ] **Step 3: Implement `src/hbacc_prj/dataset_config.py`**
+- [x] **Step 3: Implement `src/hbacc_prj/dataset_config.py`**
 
 ```python
 """Dataset registry: parse and validate datasets/<name>.yaml files."""
@@ -236,12 +250,12 @@ def load_all_dataset_configs(dir_path: str | Path) -> list[DatasetConfig]:
     return configs
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_dataset_config.py -v`
 Expected: 5 PASS. (If `yaml` missing: `uv add pyyaml`.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/hbacc_prj/dataset_config.py tests/test_dataset_config.py
@@ -261,7 +275,7 @@ git commit -m "feat: DatasetConfig registry with YAML validation"
 - Consumes: `MappingConfig` from Task 1.
 - Produces: `normalize(df: pd.DataFrame, mapping: MappingConfig) -> pd.DataFrame` (columns exactly `entity_id`, `ds`, `quantity`, `attrs`); `NormalizeError(ValueError)` carrying `.report: list[str]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_normalize.py
@@ -307,12 +321,12 @@ def test_duplicate_entity_ds_rejected():
     assert any("duplicate" in r for r in e.value.report)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_normalize.py -v`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `src/hbacc_prj/connectors/normalize.py`**
+- [x] **Step 3: Implement `src/hbacc_prj/connectors/normalize.py`**
 
 ```python
 """Map any raw DataFrame to the canonical schema and validate it."""
@@ -364,11 +378,11 @@ def normalize(df: pd.DataFrame, mapping: MappingConfig) -> pd.DataFrame:
     return out[CANONICAL_COLUMNS]
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_normalize.py -v` — Expected: 4 PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/hbacc_prj/connectors/ tests/test_normalize.py
@@ -389,7 +403,7 @@ git commit -m "feat: canonical schema normalize with validation report"
 - Consumes: `SourceConfig`, `DatasetConfig` (Task 1); `normalize` (Task 2).
 - Produces: `fetch(source: SourceConfig) -> pd.DataFrame` in each connector module; `get_connector(source_type: str) -> Callable[[SourceConfig], pd.DataFrame]`; `register_connector(source_type, fetch)`; `ingest_dataset(cfg: DatasetConfig) -> pd.DataFrame` (fetch → optional preprocess hook → normalize); `hooks.get_hook(name: str) -> Callable[[pd.DataFrame], pd.DataFrame]` raising `KeyError` for unknown names; `hooks.register(name)` decorator.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_file_connector.py
@@ -433,11 +447,11 @@ def test_ingest_dataset_end_to_end(tmp_path):
     assert out["quantity"].tolist() == [1.0, 2.0]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_file_connector.py -v` — Expected: FAIL, module not found.
 
-- [ ] **Step 3: Implement the three modules**
+- [x] **Step 3: Implement the three modules**
 
 ```python
 # src/hbacc_prj/connectors/file_source.py
@@ -519,9 +533,9 @@ def ingest_dataset(cfg: DatasetConfig) -> pd.DataFrame:
     return normalize(raw, cfg.mapping)
 ```
 
-- [ ] **Step 4: Run tests** — `uv run pytest tests/test_file_connector.py -v` — Expected: 4 PASS.
+- [x] **Step 4: Run tests** — `uv run pytest tests/test_file_connector.py -v` — Expected: 4 PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/hbacc_prj/connectors/ src/hbacc_prj/hooks.py tests/test_file_connector.py
@@ -542,7 +556,7 @@ git commit -m "feat: file connector, connector registry, named hooks"
 - Consumes: `parse_vn_decimal` from `src/hbacc_prj/data.py:9`; `register` from Task 3.
 - Produces: hook `"hbaac_sales"` — cleans raw HBAAC CSV rows and aggregates to one row per `ItemCode`/`Date` with columns `ItemCode`, `Date`, `net_qty`, `SalesAmount`; hook `"hbaac_key_skus"` wrapping the existing postprocess module.
 
-- [ ] **Step 1: Write `datasets/hbaac_sku.yaml`**
+- [x] **Step 1: Write `datasets/hbaac_sku.yaml`**
 
 ```yaml
 name: hbaac_sku
@@ -564,7 +578,7 @@ training:
 postprocess: hbaac_key_skus
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_hbaac_dataset.py
@@ -600,12 +614,12 @@ def test_hbaac_yaml_loads_and_ingests(tmp_path):
     assert s1["quantity"].iloc[0] == 1.0
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_hbaac_dataset.py -v`
 Expected: FAIL — `KeyError: unknown hook 'hbaac_sales'`.
 
-- [ ] **Step 4: Implement `src/hbacc_prj/hbaac_hooks.py`**
+- [x] **Step 4: Implement `src/hbacc_prj/hbaac_hooks.py`**
 
 ```python
 """HBAAC-specific hooks: raw sales cleaning reused from data.py semantics."""
@@ -650,9 +664,9 @@ Note: open `src/hbacc_prj/postprocess_key_skus.py` and use its real public
 function name in `hbaac_key_skus`; if its input columns are SKU-named, rename
 `entity_id` -> `ItemCode` before calling and back after.
 
-- [ ] **Step 5: Run tests** — `uv run pytest tests/test_hbaac_dataset.py -v` — Expected: PASS.
+- [x] **Step 5: Run tests** — `uv run pytest tests/test_hbaac_dataset.py -v` — Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add datasets/hbaac_sku.yaml src/hbacc_prj/hbaac_hooks.py src/hbacc_prj/__init__.py tests/test_hbaac_dataset.py
@@ -672,7 +686,7 @@ git commit -m "feat: HBAAC registered as first dataset via YAML + hooks"
 - Consumes: `load_dataset_config`, `ingest_dataset` (Tasks 1, 3).
 - Produces: CLI `python -m scripts.run_dataset_pipeline --dataset <name> --stage <ingest|features|train|forecast|monitor> [--batch-id X]`; `run_stage(cfg: DatasetConfig, stage: str, batch_id: str) -> None`; adapters `build_features_for_dataset(cfg, batch_id)`, `train_for_dataset(cfg)`, `forecast_for_dataset(cfg)`, `monitor_dataset(cfg)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_run_dataset_pipeline.py
@@ -696,9 +710,9 @@ def test_ingest_stage_writes_parquet(tmp_path, monkeypatch):
     assert out["entity_id"].tolist() == ["A"]
 ```
 
-- [ ] **Step 2: Run to verify it fails** — `uv run pytest tests/test_run_dataset_pipeline.py -v` — FAIL (no module).
+- [x] **Step 2: Run to verify it fails** — `uv run pytest tests/test_run_dataset_pipeline.py -v` — FAIL (no module).
 
-- [ ] **Step 3: Implement `scripts/run_dataset_pipeline.py`**
+- [x] **Step 3: Implement `scripts/run_dataset_pipeline.py`**
 
 ```python
 """Per-dataset pipeline runner used by factory-generated Airflow DAGs."""
@@ -775,9 +789,9 @@ path parameterized by `cfg.table_name` / `cfg.name`:
 Read each module's current entry function and thread `cfg` through its direct
 table/experiment references only — do NOT restructure their internals in this task.
 
-- [ ] **Step 4: Run tests** — `uv run pytest tests/test_run_dataset_pipeline.py tests/ -v` — new test PASS, full suite green.
+- [x] **Step 4: Run tests** — `uv run pytest tests/test_run_dataset_pipeline.py tests/ -v` — new test PASS, full suite green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/run_dataset_pipeline.py src/hbacc_prj/features.py src/hbacc_prj/training.py src/hbacc_prj/forecasting.py src/hbacc_prj/monitoring.py tests/test_run_dataset_pipeline.py
@@ -796,7 +810,7 @@ git commit -m "feat: per-dataset pipeline runner with stage adapters"
 - Consumes: `load_all_dataset_configs` (Task 1); CLI from Task 5.
 - Produces: for each valid `datasets/*.yaml`, DAGs `ingest_{name}`, `features_{name}`, `train_{name}`, `forecast_{name}`, `monitor_{name}` registered in Airflow's global namespace; `build_dags_for_config(cfg) -> dict[str, DAG]`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_dag_factory.py
@@ -815,9 +829,9 @@ def test_builds_five_dags_for_hbaac():
     assert dags["train_hbaac_sku"].schedule_interval == "0 4 * * 0"
 ```
 
-- [ ] **Step 2: Run to verify it fails** — `uv run pytest tests/test_dag_factory.py -v` — FAIL.
+- [x] **Step 2: Run to verify it fails** — `uv run pytest tests/test_dag_factory.py -v` — FAIL.
 
-- [ ] **Step 3: Implement `dags/factory.py`**
+- [x] **Step 3: Implement `dags/factory.py`**
 
 ```python
 """Generate per-dataset Airflow DAGs from datasets/*.yaml."""
@@ -870,9 +884,9 @@ for _cfg in load_all_dataset_configs(DATASETS_DIR):
 Chaining note: stage DAGs stay independently triggerable, matching how
 dag_01→02→04 are operated today (no cross-DAG trigger added).
 
-- [ ] **Step 4: Run tests** — `uv run pytest tests/test_dag_factory.py -v` — PASS. Also `uv run python -c "import dags.factory"` must not raise.
+- [x] **Step 4: Run tests** — `uv run pytest tests/test_dag_factory.py -v` — PASS. Also `uv run python -c "import dags.factory"` must not raise.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add dags/factory.py tests/test_dag_factory.py
@@ -894,7 +908,7 @@ git commit -m "feat: DAG factory generating per-dataset pipelines"
 - Consumes: `SourceConfig` (Task 1).
 - Produces: `database_source.fetch(source)` — reads DSN from `os.environ[source.secret_ref]`, runs `source.query` via SQLAlchemy; `api_source.fetch(source)` — GET `source.location` with `params=source.params`, header `Authorization: Bearer <os.environ[source.secret_ref]>` if set, expects JSON list or `{"results": [...], "next": url}` with pagination.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_db_api_connectors.py
@@ -940,9 +954,9 @@ def test_api_fetch_with_pagination(monkeypatch):
     assert out["item"].tolist() == ["A", "B"]
 ```
 
-- [ ] **Step 2: Run to verify fail** — `uv run pytest tests/test_db_api_connectors.py -v` — FAIL.
+- [x] **Step 2: Run to verify fail** — `uv run pytest tests/test_db_api_connectors.py -v` — FAIL.
 
-- [ ] **Step 3: Implement both connectors**
+- [x] **Step 3: Implement both connectors**
 
 ```python
 # src/hbacc_prj/connectors/database_source.py
@@ -1013,7 +1027,7 @@ _CONNECTORS: dict[str, Callable[[SourceConfig], pd.DataFrame]] = {
 }
 ```
 
-- [ ] **Step 4: Create the second sample dataset** — `data/raw/sample_shop.csv` (20 rows, columns `store_item`, `sale_date`, `units_sold`, `unit_price`; dates spanning 2026-01-01..2026-01-10, 2 entities) and:
+- [x] **Step 4: Create the second sample dataset** — `data/raw/sample_shop.csv` (20 rows, columns `store_item`, `sale_date`, `units_sold`, `unit_price`; dates spanning 2026-01-01..2026-01-10, 2 entities) and:
 
 ```yaml
 # datasets/sample_shop.yaml
@@ -1033,9 +1047,9 @@ training:
   validation_days: 14
 ```
 
-- [ ] **Step 5: Run all tests** — `uv run pytest tests/ -v` — all PASS (`uv add sqlalchemy` if missing). Verify factory picks up the new dataset: `uv run python -c "import dags.factory as f; print([d for d in dir(f) if 'sample_shop' in d])"` prints 5 DAG names.
+- [x] **Step 5: Run all tests** — `uv run pytest tests/ -v` — all PASS (`uv add sqlalchemy` if missing). Verify factory picks up the new dataset: `uv run python -c "import dags.factory as f; print([d for d in dir(f) if 'sample_shop' in d])"` prints 5 DAG names.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/hbacc_prj/connectors/ datasets/sample_shop.yaml data/raw/sample_shop.csv tests/test_db_api_connectors.py
@@ -1054,7 +1068,7 @@ git commit -m "feat: database and API connectors + second sample dataset"
 **Interfaces:**
 - Consumes: `ingest_dataset` (Task 3); `make_daily_sales`/`load_train` from `src/hbacc_prj/data.py:24-64`.
 
-- [ ] **Step 1: Create fixture and write the golden test**
+- [x] **Step 1: Create fixture and write the golden test**
 
 ```bash
 head -5001 data/raw/train.csv > tests/load/train_sample.csv
@@ -1089,9 +1103,9 @@ def test_canonical_matches_legacy_daily_net_qty():
     )
 ```
 
-- [ ] **Step 2: Run** — `uv run pytest tests/test_golden_hbaac.py -v` — must PASS. If it fails, fix the `hbaac_sales` hook (not the test) until parity.
+- [x] **Step 2: Run** — `uv run pytest tests/test_golden_hbaac.py -v` — must PASS. If it fails, fix the `hbaac_sales` hook (not the test) until parity.
 
-- [ ] **Step 3: Verify new DAGs green in Airflow** (manual gate — on GKE):
+- [x] **Step 3: Verify new DAGs green in Airflow** (manual gate — on GKE):
 
 ```bash
 kubectl exec -n dealight deploy/airflow-scheduler -- airflow dags list | grep hbaac_sku   # expect 5 DAGs
@@ -1101,7 +1115,7 @@ kubectl exec -n dealight deploy/airflow-scheduler -- airflow dags list-runs -d i
 
 Expected: run state `success`. Do not proceed to deletion until green.
 
-- [ ] **Step 4: Delete legacy DAGs 01–05**
+- [x] **Step 4: Delete legacy DAGs 01–05**
 
 ```bash
 git rm dags/dag_01_ingest_transform.py dags/dag_02_build_features.py dags/dag_03_train_model.py dags/dag_04_batch_forecast.py dags/dag_05_monitoring.py
@@ -1109,7 +1123,7 @@ git rm dags/dag_01_ingest_transform.py dags/dag_02_build_features.py dags/dag_03
 
 (`dag_06_backfill_idempotency.py`, `dag_07_de_gcs_pipeline.py`, `sprint_01_platform_health.py` remain — shared, spec §5.)
 
-- [ ] **Step 5: Full suite + commit**
+- [x] **Step 5: Full suite + commit**
 
 ```bash
 uv run pytest tests/ -v
@@ -1131,7 +1145,7 @@ git add -A && git commit -m "feat: golden-test parity proven; remove legacy per-
 - Consumes: `load_all_dataset_configs` (Task 1); FastAPI app in `api/app/main.py`; existing forecast query helpers in `api/app/repository.py`.
 - Produces: `GET /api/v1/datasets` → `[{"name": "hbaac_sku"}, {"name": "sample_shop"}]`; `GET /api/v1/{dataset}/forecast/summary?target_date=...` → same payload shape as existing `/api/forecast/summary`, per dataset; 404 for unknown dataset. Existing routes untouched.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_datasets_api.py
@@ -1154,9 +1168,9 @@ def test_unknown_dataset_404():
     assert r.status_code == 404
 ```
 
-- [ ] **Step 2: Run to verify fail** — `uv run pytest tests/test_datasets_api.py -v` — FAIL (404 on /api/v1/datasets).
+- [x] **Step 2: Run to verify fail** — `uv run pytest tests/test_datasets_api.py -v` — FAIL (404 on /api/v1/datasets).
 
-- [ ] **Step 3: Implement `api/app/routers/datasets.py`**
+- [x] **Step 3: Implement `api/app/routers/datasets.py`**
 
 ```python
 """Multi-dataset listing and per-dataset forecast routes."""
@@ -1202,9 +1216,9 @@ In `src/hbacc_prj/training.py` (adapter from Task 5): register model as
 `f"{cfg.name}-forecaster"`; for `hbaac_sku` also keep registering under the
 current production model name so the deployed forecast-api keeps resolving it.
 
-- [ ] **Step 4: Run all tests** — `uv run pytest tests/ -v` — all PASS.
+- [x] **Step 4: Run all tests** — `uv run pytest tests/ -v` — all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add api/app/routers/datasets.py api/app/main.py api/app/repository.py src/hbacc_prj/training.py tests/test_datasets_api.py

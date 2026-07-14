@@ -38,7 +38,7 @@ def test_retrain_trigger_returns_dag_run_id(client: TestClient) -> None:
     resp = client.post("/retrain/trigger", json={"reason": "drift"})
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["dag_id"] == "dag_03_train_model"
+    assert body["dag_id"] == "train_hbaac_sku"
     assert body["dag_run_id"].startswith("manual__")
     assert body["state"] == "queued"
 

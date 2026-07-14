@@ -283,8 +283,8 @@ def train_and_log(
             Path(__file__).with_name("features.py"),
             project_root / "scripts/train_model.py",
             project_root / "feature_registry.yaml",
-            project_root / "dags/dag_03_train_model.py",
-            Path("/opt/airflow/dags/dag_03_train_model.py"),
+            project_root / "dags/factory.py",
+            Path("/opt/airflow/dags/factory.py"),
         ]
         for source_file in source_files:
             if source_file.exists():

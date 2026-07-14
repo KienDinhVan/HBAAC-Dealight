@@ -140,7 +140,7 @@ export default function DriftPage() {
         <div className="m-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs">
           <div className="mb-2 flex items-center gap-2 text-zinc-300">
             <PlayCircle className="h-4 w-4 text-emerald-400" />
-            <span className="font-medium">Trigger retrain via Airflow (dag_03_train_model)</span>
+            <span className="font-medium">Trigger retrain via Airflow (train_hbaac_sku)</span>
           </div>
           <div className="flex items-center gap-2">
             <input

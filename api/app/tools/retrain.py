@@ -9,8 +9,8 @@ from .base import Tool, tool
 
 _logger = logging.getLogger(__name__)
 
-TRAIN_DAG_ID = "dag_03_train_model"
-BATCH_DAG_ID = "dag_04_batch_forecast"
+TRAIN_DAG_ID = "train_hbaac_sku"
+BATCH_DAG_ID = "forecast_hbaac_sku"
 
 
 def make_retrain_tools(airflow: AirflowClient) -> list[Tool]:

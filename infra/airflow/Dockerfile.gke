@@ -6,7 +6,7 @@ COPY --chown=airflow:root src /opt/project/src
 COPY --chown=airflow:root scripts /opt/project/scripts
 COPY --chown=airflow:root datasets /opt/project/datasets
 COPY --chown=airflow:root feature_registry.yaml /opt/project/feature_registry.yaml
-# dag_01 ingest đọc CSV local — bake raw data cho môi trường k8s (không có host mount như compose).
+# File datasets read local fixtures baked into the Airflow image.
 COPY --chown=airflow:root data/raw /opt/project/data/raw
 
 ENV PYTHONPATH=/opt/project/src:/opt/project \

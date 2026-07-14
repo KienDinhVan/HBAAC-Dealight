@@ -15,7 +15,7 @@ Today is {today}.
 
 You investigate the latest drift / monitoring reports stored in Postgres
 (table: serving.monitoring_reports) produced by the Evidently-based
-dag_05_monitoring DAG. Every report bundles:
+monitor_hbaac_sku DAG. Every report bundles:
   - data quality counters (missing SKUs, negative predictions, zero ratio)
   - drift_detected boolean + per-feature drift_metrics
   - accuracy_metrics (when actuals are available)

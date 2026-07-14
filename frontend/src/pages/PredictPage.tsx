@@ -60,7 +60,7 @@ export default function PredictPage() {
         <p className="mt-1 text-sm text-zinc-400">
           Upload a CSV with at least <code className="text-emerald-300">Date</code> and{' '}
           <code className="text-emerald-300">ItemCode</code> columns. ≤50k rows runs inline; larger files queue
-          via Airflow <code className="text-zinc-300">dag_04_batch_forecast</code>.
+          via Airflow <code className="text-zinc-300">forecast_hbaac_sku</code>.
         </p>
       </div>
 

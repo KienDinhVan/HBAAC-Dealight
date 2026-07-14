@@ -32,7 +32,7 @@ metadata:
   name: ${JOB}
   namespace: ${NS}
 spec:
-  backoffLimit: 0
+  backoffLimit: 2
   ttlSecondsAfterFinished: 7200
   template:
     spec:

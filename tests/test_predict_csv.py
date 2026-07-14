@@ -74,9 +74,15 @@ def test_predict_csv_async_path_triggers_airflow(client: TestClient, tmp_path, m
     assert body["mode"] == "async"
     assert body["status"] == "queued"
     assert body["dag_run_id"] == "manual__test"
+    assert app.state.airflow_client.trigger_dag.await_args.args[0] == (
+        "forecast_hbaac_sku"
+    )
     saved = list(tmp_path.glob("*.csv"))
     assert len(saved) == 1
 
     job_resp = client.get(f"/predict/jobs/{body['job_id']}")
     assert job_resp.status_code == 200
     assert job_resp.json()["status"] == "completed"
+    assert app.state.airflow_client.get_dag_run.await_args.args[0] == (
+        "forecast_hbaac_sku"
+    )
