@@ -60,6 +60,22 @@ resource "helm_release" "runner_set" {
     template = {
       spec = {
         serviceAccountName = "arc-runner"
+        volumes = [{
+          name     = "ci-runtime-libs"
+          emptyDir = {}
+        }]
+        initContainers = [{
+          name    = "install-runtime-libs"
+          image   = "debian:bookworm-slim"
+          command = ["/bin/sh", "-c"]
+          args = [
+            "apt-get update && apt-get install -y --no-install-recommends libgomp1 && cp -L /usr/lib/x86_64-linux-gnu/libgomp.so.1 /ci-runtime-libs/libgomp.so.1"
+          ]
+          volumeMounts = [{
+            name      = "ci-runtime-libs"
+            mountPath = "/ci-runtime-libs"
+          }]
+        }]
         containers = [{
           name    = "runner"
           image   = "ghcr.io/actions/actions-runner:latest"
@@ -72,9 +88,19 @@ resource "helm_release" "runner_set" {
               "ephemeral-storage" = "8Gi"
             }
           }
-          env = [{
-            name  = "PATH"
-            value = "/home/runner/externals/node24/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          env = [
+            {
+              name  = "PATH"
+              value = "/home/runner/externals/node24/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            },
+            {
+              name  = "LD_LIBRARY_PATH"
+              value = "/ci-runtime-libs"
+            }
+          ]
+          volumeMounts = [{
+            name      = "ci-runtime-libs"
+            mountPath = "/ci-runtime-libs"
           }]
         }]
       }
