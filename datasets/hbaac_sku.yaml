@@ -1,0 +1,17 @@
+name: hbaac_sku
+source:
+  type: file
+  location: data/raw/train.csv
+  format: csv
+preprocess: hbaac_sales
+mapping:
+  entity_id: ItemCode
+  ds: Date
+  quantity: net_qty
+  attrs: [SalesAmount]
+schedule: "0 2 * * *"
+training:
+  schedule: "0 4 * * 0"
+  validation_days: 28
+  min_wape_improvement: 0.02
+postprocess: hbaac_key_skus
