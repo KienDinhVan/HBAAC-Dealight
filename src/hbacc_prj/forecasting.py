@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import mlflow
@@ -498,6 +499,16 @@ def forecast_for_dataset(cfg: DatasetConfig) -> dict[str, Any]:
     feature_version, forecast_date, max_horizon, lookback_days) uses today's
     hbaac defaults, matching `scripts/run_batch_forecast.py`.
 
+    Before calling `generate_and_save`, we bootstrap the serving schema
+    (`scripts/sprint_05_serving_schema.sql`) the same way
+    `scripts/run_batch_forecast.py:apply_schema` does -- it is the only
+    place `serving.forecast_runs`/`serving.sku_forecast` are created, and
+    the legacy entry point always runs it first. This mirrors how the
+    sibling adapters `build_features_for_dataset`
+    (`scripts/sprint_03_feature_schema.sql`) and `monitor_dataset`
+    (`scripts/sprint_07_monitoring_schema.sql`) each apply their own schema
+    file before delegating to their underlying stage function.
+
     `cfg.postprocess` maps cleanly per the brief: if set, we look up the
     hook via `hooks.get_hook` and apply it to the forecast rows just
     persisted for this run. Note the registered `hbaac_key_skus` hook
@@ -520,6 +531,10 @@ def forecast_for_dataset(cfg: DatasetConfig) -> dict[str, Any]:
         os.environ.get("FORECAST_DATE", "2025-09-05")
     )
     run_id = f"{cfg.name}-{forecast_date.isoformat()}"
+
+    schema_path = Path("scripts/sprint_05_serving_schema.sql")
+    with psycopg.connect(database_url) as connection:
+        connection.execute(schema_path.read_text(encoding="utf-8"))
 
     report = generate_and_save(
         database_url=database_url,

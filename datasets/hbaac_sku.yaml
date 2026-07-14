@@ -14,4 +14,9 @@ training:
   schedule: "0 4 * * 0"
   validation_days: 28
   min_wape_improvement: 0.02
-postprocess: hbaac_key_skus
+# postprocess intentionally omitted: the registered hbaac_key_skus hook
+# wraps adjust_submission, which expects a Kaggle-submission-shaped frame
+# (id, F1..F28), not the serving-table shape this pipeline produces. The
+# legacy production batch-forecast path never applied this postprocess, so
+# it is left off here to preserve existing behavior. The hook remains
+# registered in hbaac_hooks.py for future explicit use.
