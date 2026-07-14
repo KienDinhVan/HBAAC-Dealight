@@ -24,7 +24,7 @@ spec:
             - --port
             - "5000"
             - --allowed-hosts
-            - mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000
+            - mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000,mlflow.136.68.214.220.nip.io
             - --backend-store-uri
             - $(MLFLOW_BACKEND_STORE_URI)
             - --default-artifact-root
