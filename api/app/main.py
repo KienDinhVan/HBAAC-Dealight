@@ -31,6 +31,7 @@ from api.app.config import get_settings
 from api.app.infra.approval import ApprovalStore
 from api.app.repository import ForecastRepository
 from api.app.routers import chat as chat_router_module
+from api.app.routers import datasets as datasets_router_module
 from api.app.routers import drift as drift_router_module
 from api.app.routers import ingest as ingest_router_module
 from api.app.routers import predict as predict_router_module
@@ -168,6 +169,7 @@ app.add_middleware(
 )
 
 app.include_router(chat_router_module.router)
+app.include_router(datasets_router_module.router)
 app.include_router(predict_router_module.router)
 app.include_router(drift_router_module.router)
 app.include_router(retrain_router_module.router)

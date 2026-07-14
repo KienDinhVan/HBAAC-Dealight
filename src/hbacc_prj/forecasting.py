@@ -523,7 +523,16 @@ def forecast_for_dataset(cfg: DatasetConfig) -> dict[str, Any]:
         "postgresql://forecast:forecast-local-only@localhost:5432/sku_forecasting",
     )
     tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
-    model_name = os.environ.get("MODEL_NAME", "sku-demand-lightgbm")
+    dataset_model_env = f"MODEL_NAME_{cfg.name.upper()}"
+    if cfg.name == "hbaac_sku":
+        model_name = os.environ.get(
+            dataset_model_env,
+            os.environ.get("MODEL_NAME", "sku-demand-lightgbm"),
+        )
+    else:
+        model_name = os.environ.get(
+            dataset_model_env, f"{cfg.name}-forecaster"
+        )
     feature_version = os.environ.get(
         "FEATURE_VERSION", "sprint-03-v1-top100-a60-h56"
     )

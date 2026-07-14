@@ -193,6 +193,8 @@ def train_and_log(
     validation_days: int = 28,
     random_seed: int = 2026,
     experiment_name: str = "sku-demand-training",
+    min_wape_improvement: float = -0.05,
+    registered_model_names: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     with psycopg.connect(database_url) as connection:
         frame = read_features(connection, feature_version)
@@ -208,7 +210,10 @@ def train_and_log(
     }
     model_metrics = metric_set(actual, predicted)
     best_baseline_wape = min(metrics["wape"] for metrics in baseline_metrics.values())
-    passes_rule = model_metrics["wape"] <= best_baseline_wape * 1.05
+    passes_rule = model_metrics["wape"] <= best_baseline_wape * (
+        1.0 - min_wape_improvement
+    )
+    model_names = registered_model_names or (MODEL_NAME,)
 
     validation_report = validation.reset_index(drop=True)
     sku_group = pd.qcut(
@@ -236,7 +241,11 @@ def train_and_log(
         "metrics_by_sku_group": _group_metrics(
             validation_report, predicted, "sku_group"
         ),
-        "promotion_rule": "lightgbm_wape <= best_baseline_wape * 1.05",
+        "promotion_rule": (
+            "lightgbm_wape <= best_baseline_wape * "
+            f"{1.0 - min_wape_improvement:.6g}"
+        ),
+        "min_wape_improvement": min_wape_improvement,
         "best_baseline_wape": best_baseline_wape,
         "passed_registration_rule": passes_rule,
     }
@@ -285,7 +294,7 @@ def train_and_log(
             artifact_path="model",
             signature=infer_signature(x_validation, predicted),
             input_example=x_validation.head(5),
-            registered_model_name=MODEL_NAME if passes_rule else None,
+            registered_model_name=model_names[0] if passes_rule else None,
         )
         run_id = run.info.run_id
 
@@ -293,24 +302,34 @@ def train_and_log(
     # legacy runs:/<run_id>/<artifact_path> location.
     _verify_logged_model(model_info.model_uri, x_validation, predicted)
 
-    model_version: str | None = None
+    registered_versions: dict[str, str] = {}
     if passes_rule:
         client = MlflowClient(tracking_uri=tracking_uri)
         versions = client.search_model_versions(f"run_id = '{run_id}'")
-        matching = [version for version in versions if version.name == MODEL_NAME]
+        matching = [version for version in versions if version.name == model_names[0]]
         if not matching:
             raise ValueError("Registered model version not found after MLflow logging")
-        model_version = matching[-1].version
+        primary_version = str(matching[-1].version)
+        registered_versions[model_names[0]] = primary_version
         client.transition_model_version_stage(
-            name=MODEL_NAME, version=model_version, stage="Staging"
+            name=model_names[0], version=primary_version, stage="Staging"
         )
+        for alias_name in model_names[1:]:
+            alias_version = mlflow.register_model(model_info.model_uri, alias_name)
+            registered_versions[alias_name] = str(alias_version.version)
+            client.transition_model_version_stage(
+                name=alias_name,
+                version=str(alias_version.version),
+                stage="Staging",
+            )
 
     report.update(
         {
             "mlflow_run_id": run_id,
             "model_uri": model_info.model_uri,
-            "registered_model_name": MODEL_NAME if passes_rule else None,
-            "registered_model_version": model_version,
+            "registered_model_name": model_names[0] if passes_rule else None,
+            "registered_model_version": registered_versions.get(model_names[0]),
+            "registered_models": registered_versions,
             "model_reloaded_and_predicted": True,
         }
     )
@@ -344,6 +363,9 @@ def train_for_dataset(cfg: DatasetConfig) -> dict[str, Any]:
         "FEATURE_VERSION", "sprint-03-v1-top100-a60-h56"
     )
     output_path = Path(f"data/features/evaluation_{cfg.name}.json")
+    model_names = (f"{cfg.name}-forecaster",)
+    if cfg.name == "hbaac_sku":
+        model_names = (MODEL_NAME, *model_names)
     return train_and_log(
         database_url,
         tracking_uri,
@@ -351,4 +373,6 @@ def train_for_dataset(cfg: DatasetConfig) -> dict[str, Any]:
         output_path,
         validation_days=cfg.training.validation_days,
         experiment_name=cfg.name,
+        min_wape_improvement=cfg.training.min_wape_improvement,
+        registered_model_names=model_names,
     )

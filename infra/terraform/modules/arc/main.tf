@@ -64,6 +64,10 @@ resource "helm_release" "runner_set" {
           name    = "runner"
           image   = "ghcr.io/actions/actions-runner:latest"
           command = ["/home/runner/run.sh"]
+          env = [{
+            name  = "PATH"
+            value = "/home/runner/externals/node24/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          }]
         }]
       }
     }

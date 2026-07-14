@@ -11,6 +11,9 @@ from airflow.operators.bash import BashOperator
 from hbacc_prj.dataset_config import DatasetConfig, load_all_dataset_configs
 
 DATASETS_DIR = Path(os.environ.get("DATASETS_DIR", "datasets"))
+PROJECT_ROOT = Path(
+    os.environ.get("PROJECT_ROOT", Path(__file__).resolve().parents[1])
+)
 CMD = (
     "python -m scripts.run_dataset_pipeline "
     "--dataset {name} --stage {stage} --batch-id '{{{{ run_id }}}}'"
@@ -28,6 +31,7 @@ def _dag(dag_id: str, schedule: str | None, cfg: DatasetConfig, stage: str) -> D
     BashOperator(
         task_id=stage,
         bash_command=CMD.format(name=cfg.name, stage=stage),
+        cwd=str(PROJECT_ROOT),
         dag=dag,
         retries=2,
     )

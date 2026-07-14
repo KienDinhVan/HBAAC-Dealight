@@ -10,5 +10,6 @@ COPY --chown=airflow:root feature_registry.yaml /opt/project/feature_registry.ya
 COPY --chown=airflow:root data/raw /opt/project/data/raw
 
 ENV PYTHONPATH=/opt/project/src:/opt/project \
-    DATASETS_DIR=/opt/project/datasets
+    DATASETS_DIR=/opt/project/datasets \
+    PROJECT_ROOT=/opt/project
 WORKDIR /opt/project

@@ -84,36 +84,73 @@ def load_dataset_config(path: str | Path) -> DatasetConfig:
     stype = _require(src, "type", f"{path.name} source")
     if stype not in SOURCE_TYPES:
         raise ConfigError(f"{path.name}: source.type '{stype}' not in {sorted(SOURCE_TYPES)}")
+    location = str(src.get("location", ""))
+    secret_ref = str(src.get("secret_ref", ""))
+    query = str(src.get("query", ""))
+    file_format = str(src.get("format", "csv"))
+    params = src.get("params") or {}
+    if stype == "file":
+        if not location:
+            raise ConfigError(f"{path.name}: file source requires 'location'")
+        if file_format not in {"csv", "parquet"}:
+            raise ConfigError(
+                f"{path.name}: file source format must be 'csv' or 'parquet'"
+            )
+    elif stype == "database":
+        if not secret_ref or not query:
+            raise ConfigError(
+                f"{path.name}: database source requires 'secret_ref' and 'query'"
+            )
+    elif not location:
+        raise ConfigError(f"{path.name}: api source requires 'location'")
+    if not isinstance(params, dict):
+        raise ConfigError(f"{path.name}: source.params must be a mapping")
 
     m = _require(raw, "mapping", path.name)
     if not isinstance(m, dict):
         raise ConfigError(f"{path.name}: 'mapping' must be a mapping")
+    attrs = m.get("attrs") or []
+    if not isinstance(attrs, list) or not all(isinstance(item, str) for item in attrs):
+        raise ConfigError(f"{path.name}: mapping.attrs must be a list of column names")
     mapping = MappingConfig(
         entity_id=_require(m, "entity_id", f"{path.name} mapping"),
         ds=_require(m, "ds", f"{path.name} mapping"),
         quantity=_require(m, "quantity", f"{path.name} mapping"),
-        attrs=list(m.get("attrs") or []),
+        attrs=attrs,
     )
 
     training_raw = raw.get("training")
     if training_raw is not None and not isinstance(training_raw, dict):
         raise ConfigError(f"{path.name}: 'training' must be a mapping")
     t = training_raw or {}
+    try:
+        validation_days = int(
+            t.get("validation_days", TrainingConfig.validation_days)
+        )
+        min_wape_improvement = float(t.get("min_wape_improvement", 0.0))
+    except (TypeError, ValueError) as exc:
+        raise ConfigError(f"{path.name}: invalid numeric training setting") from exc
+    if validation_days < 1:
+        raise ConfigError(f"{path.name}: training.validation_days must be positive")
+    if not 0.0 <= min_wape_improvement < 1.0:
+        raise ConfigError(
+            f"{path.name}: training.min_wape_improvement must be in [0, 1)"
+        )
     training = TrainingConfig(
         schedule=t.get("schedule", TrainingConfig.schedule),
-        validation_days=int(t.get("validation_days", TrainingConfig.validation_days)),
-        min_wape_improvement=float(t.get("min_wape_improvement", 0.0)),
+        validation_days=validation_days,
+        min_wape_improvement=min_wape_improvement,
     )
 
     return DatasetConfig(
         name=name,
         source=SourceConfig(
             type=stype,
-            location=src.get("location", ""),
-            format=src.get("format", "csv"),
-            secret_ref=src.get("secret_ref", ""),
-            query=src.get("query", ""),
-            params=src.get("params") or {},
+            location=location,
+            format=file_format,
+            secret_ref=secret_ref,
+            query=query,
+            params=params,
         ),
         mapping=mapping,
         schedule=raw.get("schedule", "0 2 * * *"),

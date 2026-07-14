@@ -23,7 +23,11 @@ class ForecastRepository:
                 cursor.execute("SELECT 1")
                 return cursor.fetchone() is not None
 
-    def latest_run(self, forecast_date: date | None = None) -> dict[str, Any] | None:
+    def latest_run(
+        self,
+        forecast_date: date | None = None,
+        model_names: tuple[str, ...] | None = None,
+    ) -> dict[str, Any] | None:
         query = """
             SELECT run_id, forecast_date, model_name, model_version, status, row_count,
                    started_at, finished_at, error_message
@@ -34,6 +38,9 @@ class ForecastRepository:
         if forecast_date is not None:
             query += " AND forecast_date = %s"
             params.append(forecast_date)
+        if model_names:
+            query += " AND model_name = ANY(%s)"
+            params.append(list(model_names))
         query += " ORDER BY finished_at DESC NULLS LAST, started_at DESC LIMIT 1"
         with self._connect() as connection:
             with connection.cursor() as cursor:
@@ -83,9 +90,11 @@ class ForecastRepository:
                 return run, list(cursor.fetchall())
 
     def summary(
-        self, target_date: date
+        self,
+        target_date: date,
+        model_names: tuple[str, ...] | None = None,
     ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-        run = self.latest_run()
+        run = self.latest_run(model_names=model_names)
         if run is None:
             return None, None
         with self._connect() as connection:

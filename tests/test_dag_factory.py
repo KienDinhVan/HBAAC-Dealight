@@ -49,6 +49,9 @@ def test_builds_five_dags_for_hbaac(monkeypatch):
     assert dags["ingest_hbaac_sku"].schedule_interval == "0 2 * * *"
     assert dags["train_hbaac_sku"].schedule_interval == "0 4 * * 0"
     assert dags["ingest_hbaac_sku"].tasks[0].kwargs["retries"] == 2
+    assert dags["ingest_hbaac_sku"].tasks[0].kwargs["cwd"].endswith(
+        "HBAAC-Dealight"
+    )
     assert "--dataset hbaac_sku" in dags["ingest_hbaac_sku"].tasks[0].kwargs[
         "bash_command"
     ]
