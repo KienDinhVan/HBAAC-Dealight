@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CheckCircle2, CircleDashed, Clock, Database, Loader2, RefreshCw, Search, UploadCloud, XCircle } from 'lucide-react'
+import { CheckCircle2, CircleDashed, Clock, Database, ExternalLink, Loader2, RefreshCw, Search, UploadCloud, XCircle } from 'lucide-react'
 import {
   fetchBatchDq,
   fetchIngestRunTasks,
@@ -12,6 +12,7 @@ import {
   type IngestRunTasks,
   type OfflineStats,
   type OnlineStoreItem,
+  type DatasetConfig,
 } from '@/lib/api'
 
 const STEPS = [
@@ -22,7 +23,7 @@ const STEPS = [
   { id: 'sync_online_store', label: 'Redis' },
 ]
 
-const card = 'rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4'
+const card = 'rounded-md border border-zinc-800 bg-zinc-900/60 p-4'
 const heading = 'mb-3 flex items-center gap-2 text-sm font-semibold text-zinc-200'
 
 function StepIcon({ state }: { state: string | null | undefined }) {
@@ -34,7 +35,7 @@ function StepIcon({ state }: { state: string | null | undefined }) {
   return <CircleDashed className="h-5 w-5 text-zinc-600" />
 }
 
-export default function PipelinePage() {
+export default function PipelinePage({ dataset }: { dataset: DatasetConfig | null }) {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [activeBatch, setActiveBatch] = useState<string | null>(null)
@@ -71,9 +72,11 @@ export default function PipelinePage() {
   }, [])
 
   useEffect(() => {
-    refreshBatches()
-    refreshStats()
-  }, [refreshBatches, refreshStats])
+    if (dataset?.name === 'hbaac_sku') {
+      refreshBatches()
+      refreshStats()
+    }
+  }, [dataset?.name, refreshBatches, refreshStats])
 
   // Poll DAG task states every 3s while a run is in flight.
   const startPolling = useCallback(
@@ -151,9 +154,26 @@ export default function PipelinePage() {
     run?.tasks.find((t) => t.task_id === taskId)?.state
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto p-4 sm:p-6">
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
-        <h1 className="text-lg font-semibold text-zinc-100">Data Pipeline</h1>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h1 className="text-lg font-semibold text-zinc-100">Data Pipeline</h1>
+            <p className="mt-0.5 font-mono text-xs text-emerald-300">
+              {dataset?.name ?? 'Loading registry'}
+            </p>
+          </div>
+          {dataset && (
+            <div className="text-right text-[11px] text-zinc-500">
+              <div>{dataset.source_type} · {dataset.table_name}</div>
+              <div>ingest {dataset.schedule}</div>
+            </div>
+          )}
+        </div>
+
+        {dataset && <DatasetDagOverview dataset={dataset} />}
+
+        {dataset?.name === 'hbaac_sku' ? <>
 
         {/* Upload + DAG progress */}
         <section className={card}>
@@ -188,20 +208,22 @@ export default function PipelinePage() {
           </div>
           {uploadError && <p className="mt-2 text-xs text-red-400">{uploadError}</p>}
 
-          <div className="mt-4 flex items-center">
-            {STEPS.map((s, i) => (
-              <div key={s.id} className="flex flex-1 items-center">
-                <div className="flex flex-col items-center gap-1">
-                  <StepIcon state={taskState(s.id)} />
-                  <span className="text-[11px] text-zinc-400">{s.label}</span>
+          <div className="mt-4 overflow-x-auto">
+            <div className="flex min-w-[620px] items-center">
+              {STEPS.map((s, i) => (
+                <div key={s.id} className="flex flex-1 items-center">
+                  <div className="flex flex-col items-center gap-1">
+                    <StepIcon state={taskState(s.id)} />
+                    <span className="text-[11px] text-zinc-400">{s.label}</span>
+                  </div>
+                  {i < STEPS.length - 1 && (
+                    <div
+                      className={`mx-2 h-px flex-1 ${taskState(s.id) === 'success' ? 'bg-emerald-500/60' : 'bg-zinc-700'}`}
+                    />
+                  )}
                 </div>
-                {i < STEPS.length - 1 && (
-                  <div
-                    className={`mx-2 h-px flex-1 ${taskState(s.id) === 'success' ? 'bg-emerald-500/60' : 'bg-zinc-700'}`}
-                  />
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </section>
 
@@ -377,7 +399,83 @@ export default function PipelinePage() {
             )}
           </section>
         </div>
+        </> : dataset ? <DatasetOperations dataset={dataset} /> : null}
       </div>
+    </div>
+  )
+}
+
+function airflowDagUrl(dagId: string): string {
+  const { protocol, hostname } = window.location
+  const host = hostname.startsWith('web.')
+    ? hostname.replace(/^web\./, 'airflow.')
+    : `${hostname}:8080`
+  return `${protocol}//${host}/dags/${encodeURIComponent(dagId)}/grid`
+}
+
+function DatasetDagOverview({ dataset }: { dataset: DatasetConfig }) {
+  return (
+    <section className={card}>
+      <div className={heading}>
+        <Database className="h-4 w-4 text-sky-400" /> Factory DAGs
+        <span className="ml-auto rounded border border-emerald-700/50 bg-emerald-950/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+          Registered
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="grid min-w-[720px] grid-cols-5 border-y border-zinc-800">
+          {dataset.dags.map((dag, index) => (
+            <div key={dag.dag_id} className={`min-w-0 px-3 py-3 ${index ? 'border-l border-zinc-800' : ''}`}>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[10px] font-medium uppercase text-zinc-500">{dag.stage}</span>
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+              </div>
+              <div className="truncate font-mono text-xs text-zinc-200" title={dag.dag_id}>
+                {dag.dag_id}
+              </div>
+              <div className="mt-1 text-[10px] text-zinc-500">{dag.schedule ?? 'manual'}</div>
+              <a
+                href={airflowDagUrl(dag.dag_id)}
+                target="_blank"
+                rel="noreferrer"
+                title={`Open ${dag.dag_id} in Airflow`}
+                className="mt-2 inline-flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function DatasetOperations({ dataset }: { dataset: DatasetConfig }) {
+  return (
+    <section className={card}>
+      <div className={heading}>
+        <CheckCircle2 className="h-4 w-4 text-emerald-400" /> Runtime resources
+      </div>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
+        <ResourceField label="Source adapter" value={dataset.source_type} />
+        <ResourceField label="Canonical table" value={dataset.table_name} />
+        <ResourceField label="Registered model" value={dataset.model_name} />
+        <ResourceField label="Validation window" value={`${dataset.validation_days} days`} />
+        <ResourceField label="Entity column" value={dataset.mapping.entity_id} />
+        <ResourceField label="Date column" value={dataset.mapping.ds} />
+        <ResourceField label="Quantity column" value={dataset.mapping.quantity} />
+        <ResourceField label="Attributes" value={dataset.mapping.attrs.join(', ') || 'None'} />
+      </dl>
+    </section>
+  )
+}
+
+function ResourceField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="mb-1 text-[10px] font-medium uppercase text-zinc-500">{label}</dt>
+      <dd className="break-all font-mono text-zinc-200">{value}</dd>
     </div>
   )
 }

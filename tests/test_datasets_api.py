@@ -32,10 +32,24 @@ class DatasetRepository:
 def test_list_datasets():
     response = TestClient(app).get("/api/v1/datasets")
     assert response.status_code == 200
-    assert [item["name"] for item in response.json()] == [
+    datasets = response.json()
+    assert [item["name"] for item in datasets] == [
         "hbaac_sku",
         "sample_shop",
     ]
+    hbaac = datasets[0]
+    assert hbaac["source_type"] == "file"
+    assert hbaac["table_name"] == "sales_daily"
+    assert hbaac["mapping"]["entity_id"] == "ItemCode"
+    assert [dag["dag_id"] for dag in hbaac["dags"]] == [
+        "ingest_hbaac_sku",
+        "features_hbaac_sku",
+        "train_hbaac_sku",
+        "forecast_hbaac_sku",
+        "monitor_hbaac_sku",
+    ]
+    assert hbaac["dags"][0]["schedule"] == "0 2 * * *"
+    assert hbaac["dags"][2]["schedule"] == "0 4 * * 0"
 
 
 def test_unknown_dataset_404():

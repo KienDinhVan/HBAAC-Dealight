@@ -33,9 +33,42 @@ def _float_values(value: dict[str, Any], *fields: str) -> dict[str, Any]:
     return value
 
 
+def _dataset_item(config: DatasetConfig) -> dict[str, Any]:
+    model_names = _model_names(config)
+    stages = ("ingest", "features", "train", "forecast", "monitor")
+    return {
+        "name": config.name,
+        "source_type": config.source.type,
+        "source_format": config.source.format if config.source.type == "file" else None,
+        "schedule": config.schedule,
+        "training_schedule": config.training.schedule,
+        "validation_days": config.training.validation_days,
+        "model_name": model_names[0],
+        "table_name": config.table_name,
+        "mapping": {
+            "entity_id": config.mapping.entity_id,
+            "ds": config.mapping.ds,
+            "quantity": config.mapping.quantity,
+            "attrs": config.mapping.attrs,
+        },
+        "dags": [
+            {
+                "stage": stage,
+                "dag_id": f"{stage}_{config.name}",
+                "schedule": (
+                    config.schedule
+                    if stage == "ingest"
+                    else config.training.schedule if stage == "train" else None
+                ),
+            }
+            for stage in stages
+        ],
+    }
+
+
 @router.get("/datasets")
-def list_datasets() -> list[dict[str, str]]:
-    return [{"name": name} for name in sorted(_configs())]
+def list_datasets() -> list[dict[str, Any]]:
+    return [_dataset_item(config) for config in _configs().values()]
 
 
 @router.get(

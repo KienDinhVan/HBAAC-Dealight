@@ -11,14 +11,16 @@ import {
   PackageX,
   Layers,
   Brain,
+  Database,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { VegaChart } from '@/components/chart/VegaChart'
 import {
   fetchLatestRun,
-  fetchSummary,
+  fetchDatasetSummary,
   fetchTopSkus,
   fetchMonitoringLatest,
+  type DatasetConfig,
   type ForecastRun,
   type ForecastSummary,
   type TopSku,
@@ -39,7 +41,7 @@ interface TrendPoint {
   avg: number
 }
 
-export default function DashboardPage() {
+export default function DashboardPage({ dataset }: { dataset: DatasetConfig | null }) {
   const [run, setRun] = useState<ForecastRun | null>(null)
   const [summary, setSummary] = useState<ForecastSummary | null>(null)
   const [topSkus, setTopSkus] = useState<TopSku[]>([])
@@ -49,38 +51,39 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  async function load() {
+  async function load(dateOverride = targetDate) {
+    if (!dataset) return
     setLoading(true)
     setError(null)
     try {
-      const latest = await fetchLatestRun()
-      if (!latest) {
-        setRun(null)
-        setSummary(null)
-        setTopSkus([])
-        setTrend([])
-        setMonitoring(null)
-        return
-      }
+      const isHbaac = dataset.name === 'hbaac_sku'
+      const latest = isHbaac ? await fetchLatestRun() : null
       setRun(latest)
-      const td = targetDate || nextDay(latest.forecast_date)
+
+      let td = dateOverride
+      if (!td) {
+        const baseDate = latest?.forecast_date ?? new Date().toISOString().slice(0, 10)
+        td = nextDay(baseDate)
+      }
       setTargetDate(td)
 
       const [s, top, mon] = await Promise.all([
-        fetchSummary(td),
-        fetchTopSkus(td, 20),
-        fetchMonitoringLatest().catch(() => null),
+        fetchDatasetSummary(dataset.name, td),
+        isHbaac ? fetchTopSkus(td, 20).catch(() => null) : null,
+        isHbaac ? fetchMonitoringLatest().catch(() => null) : null,
       ])
       setSummary(s)
-      setTopSkus(top.items)
+      setTopSkus(top?.items ?? [])
       setMonitoring(mon)
 
       const dates = Array.from({ length: TREND_DAYS }, (_, i) => nextDay(td, i))
       const summaries = await Promise.all(
         dates.map(async (d) => {
           try {
-            const r = await fetchSummary(d)
-            return { date: d, total: r.total_predicted_quantity, avg: r.avg_predicted_quantity }
+            const result = await fetchDatasetSummary(dataset.name, d)
+            return result
+              ? { date: d, total: result.total_predicted_quantity, avg: result.avg_predicted_quantity }
+              : null
           } catch {
             return null
           }
@@ -95,18 +98,19 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    load()
+    setTargetDate('')
+    void load('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [dataset?.name])
 
   const topSkuChart = useMemo(() => {
     if (!topSkus.length) return null
     return {
       $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
-      description: `Top SKUs predicted for ${targetDate}`,
+      description: `Top entities predicted for ${targetDate}`,
       mark: { type: 'bar', color: '#34d399' },
       encoding: {
-        y: { field: 'item_code', type: 'nominal', sort: '-x', title: 'SKU' },
+        y: { field: 'item_code', type: 'nominal', sort: '-x', title: dataset?.mapping.entity_id ?? 'Entity' },
         x: { field: 'predicted_quantity', type: 'quantitative', title: 'Predicted qty' },
         tooltip: [
           { field: 'item_code', type: 'nominal' },
@@ -117,7 +121,7 @@ export default function DashboardPage() {
       height: { step: 16 },
       width: 'container' as const,
     }
-  }, [topSkus, targetDate])
+  }, [dataset?.mapping.entity_id, topSkus, targetDate])
 
   const trendChart = useMemo(() => {
     if (!trend.length) return null
@@ -131,7 +135,7 @@ export default function DashboardPage() {
         tooltip: [
           { field: 'date', type: 'temporal' },
           { field: 'total', type: 'quantitative', format: '.1f' },
-          { field: 'avg', type: 'quantitative', format: '.3f', title: 'Avg / SKU' },
+          { field: 'avg', type: 'quantitative', format: '.3f', title: 'Avg / entity' },
         ],
       },
       data: { values: trend },
@@ -155,17 +159,21 @@ export default function DashboardPage() {
   const zeroForecastShare = monitoring?.zero_ratio ?? null
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto bg-zinc-950 p-6">
-      <div className="mb-5 flex items-center justify-between">
+    <div className="flex h-full flex-col overflow-y-auto bg-zinc-950 p-4 sm:p-6">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-zinc-100">
-            HBAAC-Dealight Forecast Dashboard
+            Forecast Dashboard
           </h1>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            Sales · Inventory · Forecast · Alerts — auto-refresh on demand
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+            <span className="inline-flex items-center gap-1 text-emerald-300">
+              <Database className="h-3 w-3" /> {dataset?.name ?? 'Loading registry'}
+            </span>
+            {dataset && <span>{dataset.source_type} source</span>}
+            {dataset && <span>{dataset.table_name}</span>}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs text-zinc-400">Target date</label>
           <input
             type="date"
@@ -173,7 +181,7 @@ export default function DashboardPage() {
             onChange={(e) => setTargetDate(e.target.value)}
             className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
           />
-          <Button onClick={load} disabled={loading} size="sm">
+          <Button onClick={() => void load()} disabled={loading || !dataset} size="sm">
             <RefreshCcw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             Reload
           </Button>
@@ -187,10 +195,10 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {!error && !loading && !run && (
+      {!error && !loading && dataset && !summary && (
         <div className="mb-4 flex items-center gap-2 rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>No successful forecast yet. Run training and batch forecast to populate the dashboard.</span>
+          <span>No forecast found for {dataset.name} on {targetDate}.</span>
         </div>
       )}
 
@@ -198,22 +206,22 @@ export default function DashboardPage() {
         <KpiCard
           icon={<Brain className="h-4 w-4 text-emerald-400" />}
           label="Model"
-          value={run ? `${run.model_name}` : '—'}
-          sub={run ? `v ${run.model_version}` : ''}
+          value={summary?.model_name ?? run?.model_name ?? dataset?.model_name ?? '—'}
+          sub={summary ? `v ${summary.model_version}` : run ? `v ${run.model_version}` : ''}
           tone="emerald"
         />
         <KpiCard
           icon={<CalendarDays className="h-4 w-4 text-sky-400" />}
           label="Latest run"
-          value={run ? run.forecast_date : '—'}
-          sub={run ? run.status : ''}
+          value={summary?.forecast_date ?? run?.forecast_date ?? '—'}
+          sub={run?.status ?? ''}
           tone="sky"
         />
         <KpiCard
           icon={<TrendingUp className="h-4 w-4 text-cyan-400" />}
           label="Total predicted"
           value={summary ? summary.total_predicted_quantity.toFixed(1) : '—'}
-          sub={summary ? `${targetDate} — ${summary.sku_count.toLocaleString()} SKU` : ''}
+          sub={summary ? `${targetDate} · ${summary.sku_count.toLocaleString()} entities` : ''}
           tone="cyan"
         />
         <KpiCard
@@ -225,7 +233,7 @@ export default function DashboardPage() {
             )
           }
           label="Drift status"
-          value={driftDetected ? 'Drift detected' : 'Stable'}
+          value={monitoring ? (driftDetected ? 'Drift detected' : 'Stable') : 'Pending'}
           sub={
             driftedColumns.length
               ? `${driftedColumns.length} feature(s)`
@@ -237,7 +245,7 @@ export default function DashboardPage() {
         />
         <KpiCard
           icon={<Boxes className="h-4 w-4 text-amber-400" />}
-          label="Inactive SKUs"
+          label="Inactive entities"
           value={
             zeroForecastShare !== null ? `${(zeroForecastShare * 100).toFixed(1)}%` : '—'
           }
@@ -251,14 +259,26 @@ export default function DashboardPage() {
           title={`Daily forecast trend — next ${TREND_DAYS} days`}
           icon={<Activity className="h-4 w-4 text-cyan-400" />}
         >
-          {trendChart ? <VegaChart spec={trendChart} /> : <SkeletonBox h={200} />}
+          {trendChart ? (
+            <VegaChart spec={trendChart} />
+          ) : loading ? (
+            <SkeletonBox h={200} />
+          ) : (
+            <EmptyData text={`No forecast trend for ${dataset?.name ?? 'this dataset'}.`} h={200} />
+          )}
         </Panel>
 
         <Panel
-          title={`Top 20 SKUs by predicted demand @ ${targetDate || '—'}`}
+          title={`Top 20 entities by predicted demand @ ${targetDate || '—'}`}
           icon={<Layers className="h-4 w-4 text-emerald-400" />}
         >
-          {topSkuChart ? <VegaChart spec={topSkuChart} /> : <SkeletonBox h={320} />}
+          {topSkuChart ? (
+            <VegaChart spec={topSkuChart} />
+          ) : loading ? (
+            <SkeletonBox h={320} />
+          ) : (
+            <EmptyData text="Entity ranking is not available for this dataset yet." h={320} />
+          )}
         </Panel>
       </div>
 
@@ -278,7 +298,7 @@ export default function DashboardPage() {
               </div>
             </div>
           ) : (
-            <div className="text-xs text-zinc-500">No PSI data available yet.</div>
+            <div className="text-xs text-zinc-500">No PSI report for {dataset?.name ?? 'this dataset'}.</div>
           )}
         </Panel>
 
@@ -292,11 +312,11 @@ export default function DashboardPage() {
             )
           }
         >
-          <AlertsFeed monitoring={monitoring} />
+          <AlertsFeed monitoring={monitoring} datasetName={dataset?.name} />
         </Panel>
       </div>
 
-      <Panel
+      {dataset?.name === 'hbaac_sku' ? <Panel
         title="Inventory prep watchlist — top demand for next planning cycle"
         icon={<PackageX className="h-4 w-4 text-amber-400" />}
       >
@@ -342,7 +362,17 @@ export default function DashboardPage() {
             "Which SKUs are at risk of stockout in the next 28 days?"
           </span>
         </div>
-      </Panel>
+      </Panel> : dataset ? <Panel
+        title="Canonical data contract"
+        icon={<Database className="h-4 w-4 text-sky-400" />}
+      >
+        <dl className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-4">
+          <ContractField label="Entity" value={dataset.mapping.entity_id} />
+          <ContractField label="Date" value={dataset.mapping.ds} />
+          <ContractField label="Quantity" value={dataset.mapping.quantity} />
+          <ContractField label="Attributes" value={dataset.mapping.attrs.join(', ') || 'None'} />
+        </dl>
+      </Panel> : null}
     </div>
   )
 }
@@ -438,8 +468,16 @@ function PsiBar({
   )
 }
 
-function AlertsFeed({ monitoring }: { monitoring: MonitoringReport | null }) {
-  if (!monitoring) return <SkeletonBox h={120} />
+function AlertsFeed({
+  monitoring,
+  datasetName,
+}: {
+  monitoring: MonitoringReport | null
+  datasetName?: string
+}) {
+  if (!monitoring) {
+    return <EmptyData text={`No monitoring report for ${datasetName ?? 'this dataset'}.`} h={120} />
+  }
   const items: { tone: 'red' | 'amber' | 'emerald'; text: string }[] = []
 
   if (monitoring.drift_detected) {
@@ -504,5 +542,22 @@ function SkeletonBox({ h }: { h: number }) {
       className="animate-pulse rounded-md bg-zinc-800/60"
       style={{ height: `${h}px` }}
     />
+  )
+}
+
+function EmptyData({ text, h }: { text: string; h: number }) {
+  return (
+    <div className="flex items-center justify-center rounded-md border border-dashed border-zinc-800 px-4 text-center text-xs text-zinc-500" style={{ height: `${h}px` }}>
+      {text}
+    </div>
+  )
+}
+
+function ContractField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="mb-1 text-[10px] font-medium uppercase text-zinc-500">{label}</dt>
+      <dd className="break-all font-mono text-zinc-200">{value}</dd>
+    </div>
   )
 }

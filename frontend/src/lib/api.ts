@@ -99,6 +99,55 @@ export async function fetchPredictJob(jobId: string): Promise<PredictJobResponse
 }
 
 // ---------------------------------------------------------------------------
+// Dataset registry
+// ---------------------------------------------------------------------------
+
+export type DatasetStage = 'ingest' | 'features' | 'train' | 'forecast' | 'monitor'
+
+export interface DatasetDag {
+  stage: DatasetStage
+  dag_id: string
+  schedule: string | null
+}
+
+export interface DatasetConfig {
+  name: string
+  source_type: 'file' | 'database' | 'api'
+  source_format: string | null
+  schedule: string
+  training_schedule: string
+  validation_days: number
+  model_name: string
+  table_name: string
+  mapping: {
+    entity_id: string
+    ds: string
+    quantity: string
+    attrs: string[]
+  }
+  dags: DatasetDag[]
+}
+
+// The web proxy removes its first /api prefix before forwarding to FastAPI.
+const DATASET_API = '/api/api/v1'
+
+export function fetchDatasets(): Promise<DatasetConfig[]> {
+  return getJson(`${DATASET_API}/datasets`)
+}
+
+export async function fetchDatasetSummary(
+  dataset: string,
+  targetDate: string,
+): Promise<ForecastSummary | null> {
+  const res = await fetch(
+    `${DATASET_API}/${encodeURIComponent(dataset)}/forecast/summary?target_date=${encodeURIComponent(targetDate)}`,
+  )
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
 
