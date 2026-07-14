@@ -16,6 +16,7 @@ import psycopg
 from mlflow.models import infer_signature
 from mlflow.tracking import MlflowClient
 
+from hbacc_prj.dataset_config import DatasetConfig
 from hbacc_prj.features import NUMERIC_FEATURE_COLUMNS, TIME_FEATURE_COLUMNS
 
 MODEL_NAME = "sku-demand-lightgbm"
@@ -317,3 +318,37 @@ def train_and_log(
         json.dumps(report, indent=2, sort_keys=True), encoding="utf-8"
     )
     return report
+
+
+def train_for_dataset(cfg: DatasetConfig) -> dict[str, Any]:
+    """Thin per-dataset adapter over `train_and_log` (Sprint 4 entry point).
+
+    `train_and_log` -> `read_features()` reads from a hardcoded Postgres
+    table (`features.offline_sku_features`) keyed by `feature_version`;
+    there is no table parameter to thread `cfg.table_name` into without
+    restructuring `read_features`, which is out of scope here. What maps
+    cleanly, per the brief, is the MLflow experiment name (`cfg.name`) and
+    the validation window (`cfg.training.validation_days`) -- both are
+    existing parameters of `train_and_log`. `feature_version` uses today's
+    hbaac default (matching `scripts/train_model.py`) since this adapter
+    has no batch_id to key it by; a real per-dataset feature_version handoff
+    would need the pipeline runner to pass one through, which is out of
+    scope for this thin adapter.
+    """
+    database_url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql://forecast:forecast-local-only@localhost:5432/sku_forecasting",
+    )
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    feature_version = os.environ.get(
+        "FEATURE_VERSION", "sprint-03-v1-top100-a60-h56"
+    )
+    output_path = Path(f"data/features/evaluation_{cfg.name}.json")
+    return train_and_log(
+        database_url,
+        tracking_uri,
+        feature_version,
+        output_path,
+        validation_days=cfg.training.validation_days,
+        experiment_name=cfg.name,
+    )

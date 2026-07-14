@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -12,6 +13,8 @@ import psycopg
 from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
 
+from hbacc_prj import hooks
+from hbacc_prj.dataset_config import DatasetConfig
 from hbacc_prj.features import (
     NUMERIC_FEATURE_COLUMNS,
     TIME_FEATURE_COLUMNS,
@@ -480,3 +483,67 @@ def generate_and_save(
             str(key): int(value) for key, value in source_counts.items()
         },
     }
+
+
+def forecast_for_dataset(cfg: DatasetConfig) -> dict[str, Any]:
+    """Thin per-dataset adapter over `generate_and_save` (Sprint 5 entry
+    point), applying `cfg.postprocess` when configured.
+
+    `generate_and_save` reads/writes hardcoded Postgres tables
+    (`gold.daily_sku_sales`, `features.offline_sku_features`,
+    `serving.sku_forecast`); there is no table parameter to thread
+    `cfg.table_name` into without restructuring those reads, which is out of
+    scope here. `run_id` is keyed by `cfg.name` so each dataset's forecast
+    runs are distinguishable. Everything else (tracking_uri, model_name,
+    feature_version, forecast_date, max_horizon, lookback_days) uses today's
+    hbaac defaults, matching `scripts/run_batch_forecast.py`.
+
+    `cfg.postprocess` maps cleanly per the brief: if set, we look up the
+    hook via `hooks.get_hook` and apply it to the forecast rows just
+    persisted for this run. Note the registered `hbaac_key_skus` hook
+    expects a Kaggle-submission-shaped frame (`id`, `F1`..`F28`), not the
+    `item_code`/`target_date`/`predicted_quantity` shape `generate_and_save`
+    persists -- calling it here only produces a meaningful result for
+    postprocess hooks actually written against that shape. We do not
+    special-case `hbaac_key_skus`; the hook is wired through generically.
+    """
+    database_url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql://forecast:forecast-local-only@localhost:5432/sku_forecasting",
+    )
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    model_name = os.environ.get("MODEL_NAME", "sku-demand-lightgbm")
+    feature_version = os.environ.get(
+        "FEATURE_VERSION", "sprint-03-v1-top100-a60-h56"
+    )
+    forecast_date = date.fromisoformat(
+        os.environ.get("FORECAST_DATE", "2025-09-05")
+    )
+    run_id = f"{cfg.name}-{forecast_date.isoformat()}"
+
+    report = generate_and_save(
+        database_url=database_url,
+        tracking_uri=tracking_uri,
+        model_name=model_name,
+        feature_version=feature_version,
+        forecast_date=forecast_date,
+        run_id=run_id,
+    )
+
+    if cfg.postprocess:
+        hook = hooks.get_hook(cfg.postprocess)
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT item_code, target_date, horizon, predicted_quantity
+                    FROM serving.sku_forecast WHERE run_id = %s
+                    ORDER BY item_code, horizon
+                    """,
+                    (run_id,),
+                )
+                columns = [d.name for d in cursor.description or []]
+                forecast_frame = pd.DataFrame(cursor.fetchall(), columns=columns)
+        report["postprocessed_rows"] = int(len(hook(forecast_frame)))
+
+    return report

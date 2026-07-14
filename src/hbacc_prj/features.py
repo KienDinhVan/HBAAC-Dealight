@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 import psycopg
+
+from hbacc_prj.dataset_config import DatasetConfig
 
 FeatureStage = Literal["validate-gold", "save", "quality", "summary", "all"]
 
@@ -337,3 +340,36 @@ def run_feature_stage(
         persist_features(connection, feature_version, features)
         summary["feature_version"] = feature_version
         return summary
+
+
+def build_features_for_dataset(
+    cfg: DatasetConfig, batch_id: str
+) -> dict[str, int | str]:
+    """Thin per-dataset adapter over `run_feature_stage` (Sprint 3 entry point).
+
+    `run_feature_stage` -> `read_gold()` reads from a hardcoded Postgres
+    table (`gold.daily_sku_sales`, column `item_code`); there is no
+    table/column parameter to thread `cfg.table_name` or
+    `cfg.mapping.entity_id` into without restructuring `read_gold`, which is
+    out of scope for this thin adapter. What *does* map cleanly is the
+    feature_version: keying it by `cfg.name` and `batch_id` keeps datasets
+    (and batches within a dataset) from colliding in the shared
+    `features.offline_sku_features` table. Everything else (max_skus,
+    as_of_days, max_horizon, schema path, database URL) uses today's hbaac
+    defaults, matching `scripts/run_feature_pipeline.py`.
+    """
+    database_url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql://forecast:forecast-local-only@localhost:5432/sku_forecasting",
+    )
+    schema_path = Path("scripts/sprint_03_feature_schema.sql")
+    feature_version = f"{cfg.name}-{batch_id}"
+    return run_feature_stage(
+        database_url,
+        schema_path,
+        feature_version,
+        max_skus=100,
+        as_of_days=60,
+        max_horizon=56,
+        stage="all",
+    )

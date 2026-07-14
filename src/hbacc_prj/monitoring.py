@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from evidently.presets import DataDriftPreset
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from hbacc_prj.dataset_config import DatasetConfig
 from hbacc_prj.forecasting import build_inference_frame, read_gold_window
 
 DEFAULT_FEATURE_VERSION = "sprint-03-v1-top100-a60-h56"
@@ -434,3 +436,33 @@ def run_monitoring(
 def dump_report(report: dict[str, Any], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+
+def monitor_dataset(cfg: DatasetConfig) -> dict[str, Any]:
+    """Thin per-dataset adapter over `run_monitoring` (Sprint 7 entry point).
+
+    `run_monitoring` reads/writes hardcoded Postgres tables
+    (`serving.forecast_runs`, `serving.sku_forecast`, `gold.daily_sku_sales`,
+    `features.offline_sku_features`, `monitoring.forecast_reports`); there is
+    no table parameter to thread `cfg.table_name` into without restructuring
+    those reads, which is out of scope here. What maps cleanly, per the
+    brief, is keying the monitoring `report_id` by `cfg.name` so each
+    dataset gets its own report row/history. `feature_version`, the schema
+    path, `database_url`, and `output_dir` use today's hbaac defaults,
+    matching `scripts/run_monitoring.py`.
+    """
+    database_url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql://forecast:forecast-local-only@localhost:5432/sku_forecasting",
+    )
+    schema_path = Path("scripts/sprint_07_monitoring_schema.sql")
+    output_dir = Path("data/monitoring")
+    report_id = f"{cfg.name}-monitoring"
+
+    with psycopg.connect(database_url) as connection:
+        connection.execute(schema_path.read_text(encoding="utf-8"))
+        report = run_monitoring(
+            connection, report_id, output_dir, DEFAULT_FEATURE_VERSION
+        )
+    dump_report(report, output_dir / f"{report_id}.json")
+    return report
