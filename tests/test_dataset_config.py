@@ -61,3 +61,9 @@ def test_load_all_skips_invalid(tmp_path, caplog):
     configs = load_all_dataset_configs(tmp_path)
     assert [c.name for c in configs] == ["sample_ds"]
     assert "broken.yaml" in caplog.text
+
+
+def test_load_all_skips_scalar_section(tmp_path, caplog):
+    (tmp_path / "scalar.yaml").write_text("name: scalar_ds\nsource: 5\nmapping:\n  entity_id: a\n  ds: b\n  quantity: c\n")
+    assert load_all_dataset_configs(tmp_path) == []
+    assert "scalar.yaml" in caplog.text

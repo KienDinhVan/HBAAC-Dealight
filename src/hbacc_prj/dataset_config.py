@@ -79,11 +79,15 @@ def load_dataset_config(path: str | Path) -> DatasetConfig:
         raise ConfigError(f"{path.name}: name '{name}' must match {NAME_RE.pattern}")
 
     src = _require(raw, "source", path.name)
+    if not isinstance(src, dict):
+        raise ConfigError(f"{path.name}: 'source' must be a mapping")
     stype = _require(src, "type", f"{path.name} source")
     if stype not in SOURCE_TYPES:
         raise ConfigError(f"{path.name}: source.type '{stype}' not in {sorted(SOURCE_TYPES)}")
 
     m = _require(raw, "mapping", path.name)
+    if not isinstance(m, dict):
+        raise ConfigError(f"{path.name}: 'mapping' must be a mapping")
     mapping = MappingConfig(
         entity_id=_require(m, "entity_id", f"{path.name} mapping"),
         ds=_require(m, "ds", f"{path.name} mapping"),
@@ -91,7 +95,10 @@ def load_dataset_config(path: str | Path) -> DatasetConfig:
         attrs=list(m.get("attrs") or []),
     )
 
-    t = raw.get("training") or {}
+    training_raw = raw.get("training")
+    if training_raw is not None and not isinstance(training_raw, dict):
+        raise ConfigError(f"{path.name}: 'training' must be a mapping")
+    t = training_raw or {}
     training = TrainingConfig(
         schedule=t.get("schedule", TrainingConfig.schedule),
         validation_days=int(t.get("validation_days", TrainingConfig.validation_days)),
