@@ -35,6 +35,9 @@ spec:
   backoffLimit: 2
   ttlSecondsAfterFinished: 7200
   template:
+    metadata:
+      annotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
       serviceAccountName: kaniko-builder
       restartPolicy: Never
@@ -68,9 +71,10 @@ t=0
 while true; do
   s="$(kubectl -n "$NS" get job "$JOB" -o jsonpath='{.status.succeeded}' 2>/dev/null || true)"
   f="$(kubectl -n "$NS" get job "$JOB" -o jsonpath='{.status.failed}' 2>/dev/null || true)"
+  failed_condition="$(kubectl -n "$NS" get job "$JOB" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)"
   if [ "${s:-0}" -ge 1 ]; then echo "${JOB} OK"; exit 0; fi
-  if [ "${f:-0}" -ge 1 ]; then
-    echo "::error::${JOB} failed"
+  if [ "$failed_condition" = "True" ]; then
+    echo "::error::${JOB} failed after ${f:-0} attempt(s)"
     kubectl -n "$NS" logs "job/${JOB}" --tail=200 || true
     exit 1
   fi
