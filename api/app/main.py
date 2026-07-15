@@ -26,6 +26,7 @@ from api.app.clients.bigquery import OfflineStoreClient
 from api.app.clients.duckdb_client import DuckDBClient
 from api.app.clients.gcs import GcsUploader
 from api.app.clients.mlflow_registry import ModelRegistryClient
+from api.app.clients.model_cache import ModelCache
 from api.app.clients.openrouter import OpenRouterClient
 from api.app.clients.redis_store import OnlineStoreClient
 from api.app.config import get_settings
@@ -118,7 +119,11 @@ async def _lifespan(app: FastAPI):
     )
     app.state.duckdb = None
     app.state.team_lead = None
-    app.state.model = None
+    app.state.model_cache = ModelCache(
+        tracking_uri=settings.mlflow_tracking_uri,
+        fallback_model_uri=settings.mlflow_model_uri,
+        fallback_path=settings.production_submission_path or None,
+    )
 
     if settings.enable_agents:
         try:

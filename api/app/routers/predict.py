@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 
 from api.app.clients.airflow import AirflowClient
 from api.app.config import get_settings
@@ -33,6 +33,7 @@ _JOBS: dict[str, dict[str, Any]] = {}
 async def predict_csv(
     request: Request,
     file: UploadFile = File(...),
+    dataset: str = Form("hbaac_sku"),
     airflow: AirflowClient = Depends(get_airflow_client),
 ) -> PredictJobResponse:
     raw = await file.read()
@@ -55,7 +56,7 @@ async def predict_csv(
     settings = get_settings()
 
     if rows <= settings.inline_predict_max_rows:
-        items, chart_spec = _predict_inline(df, request)
+        items, chart_spec = _predict_inline(df, request, dataset)
         _JOBS[job_id] = {
             "status": "completed",
             "mode": "inline",
@@ -133,12 +134,15 @@ async def get_job(
     )
 
 
-def _predict_inline(df: pd.DataFrame, request: Request) -> tuple[list[PredictPoint], dict[str, Any]]:
+def _predict_inline(
+    df: pd.DataFrame, request: Request, dataset: str
+) -> tuple[list[PredictPoint], dict[str, Any]]:
     df = df.copy()
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df = df.dropna(subset=["Date", "ItemCode"])
 
-    model = getattr(request.app.state, "model", None)
+    cache = getattr(request.app.state, "model_cache", None)
+    model = cache.get(dataset) if cache is not None else None
     if model is not None and hasattr(model, "predict"):
         try:
             preds = model.predict(df)

@@ -21,6 +21,11 @@ def _reset_jobs():
 
 @pytest.fixture
 def client() -> TestClient:
+    from unittest.mock import MagicMock
+
+    cache = MagicMock()
+    cache.get.return_value = None  # exercise the baseline path
+    app.state.model_cache = cache
     app.state.airflow_client = AsyncMock()
     app.state.airflow_client.trigger_dag = AsyncMock(
         return_value={"dag_run_id": "manual__test", "state": "queued"}
@@ -48,6 +53,13 @@ def test_predict_csv_inline_returns_items(client: TestClient) -> None:
     assert body["rows"] == 20
     assert len(body["items"]) > 0
     assert "predicted_quantity" in body["items"][0]
+
+
+def test_predict_csv_passes_dataset_to_cache(client: TestClient) -> None:
+    files = {"file": ("sample.csv", io.BytesIO(_csv_bytes(5)), "text/csv")}
+    resp = client.post("/predict/csv", files=files, data={"dataset": "sample_shop"})
+    assert resp.status_code == 200, resp.text
+    app.state.model_cache.get.assert_called_with("sample_shop")
 
 
 def test_predict_csv_missing_required_column_returns_400(client: TestClient) -> None:
