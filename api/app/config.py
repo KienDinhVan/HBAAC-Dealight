@@ -40,6 +40,7 @@ class Settings:
     bq_dataset: str = "dealight"
     max_upload_bytes: int = 104_857_600  # 100 MiB cap for /ingest/upload
     redis_url: str = ""  # online feature store; empty = lookups disabled
+    jwt_secret: str = "dev-insecure-secret"
 
 
 def _parse_origins(raw: str) -> tuple[str, ...]:
@@ -87,4 +88,5 @@ def get_settings() -> Settings:
         bq_dataset=os.getenv("BQ_DATASET", defaults.bq_dataset),
         max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", defaults.max_upload_bytes)),
         redis_url=os.getenv("REDIS_URL", defaults.redis_url),
+        jwt_secret=os.getenv("JWT_SECRET", defaults.jwt_secret),
     )
