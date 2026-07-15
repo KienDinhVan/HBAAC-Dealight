@@ -1,18 +1,31 @@
-import { TrendingUp, Zap, ArrowRight } from 'lucide-react'
+import { useState } from 'react'
+import { TrendingUp, ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { login, type AuthUser } from '@/lib/api'
 
 interface LoginPageProps {
-  onLogin: () => void
+  onLogin: (user: AuthUser) => void
 }
 
-const FEATURES = [
-  'Sales performance & revenue analysis',
-  'Demand forecasting with LightGBM AI model',
-  'Stockout & overstock risk alerts',
-  'Multi-agent AI collaboration',
-]
-
 export default function LoginPage({ onLogin }: LoginPageProps) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      onLogin(await login(username, password))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center relative overflow-hidden">
       {/* Subtle dot-grid background */}
@@ -48,21 +61,40 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             </p>
           </div>
 
-          {/* Feature list */}
-          <ul className="space-y-2.5 mb-8">
-            {FEATURES.map(f => (
-              <li key={f} className="flex items-center gap-2.5 text-sm text-zinc-400">
-                <Zap className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0" />
-                {f}
-              </li>
-            ))}
-          </ul>
-
-          {/* CTA */}
-          <Button onClick={onLogin} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white" size="lg">
-            Enter Workspace
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+          {/* Login form */}
+          <form onSubmit={submit} className="space-y-3">
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username"
+              autoComplete="username"
+              className="h-10 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-emerald-500"
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              autoComplete="current-password"
+              className="h-10 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-emerald-500"
+            />
+            {error && <p className="text-xs text-red-400">{error}</p>}
+            <Button
+              type="submit"
+              disabled={busy || !username || !password}
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white"
+              size="lg"
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  Sign in
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </form>
 
           <p className="text-center text-xs text-zinc-600 mt-4">
             Powered by DuckDB · LightGBM · LLM

@@ -1,7 +1,14 @@
-import { BarChart3, Database, FileUp, Sparkles, ShieldAlert, TrendingUp, Workflow } from 'lucide-react'
-import type { DatasetConfig } from '@/lib/api'
+import { BadgeCheck, BarChart3, Boxes, Database, FileUp, LogOut, Sparkles, ShieldAlert, TrendingUp, Workflow } from 'lucide-react'
+import type { AuthUser, DatasetConfig } from '@/lib/api'
 
-export type WorkspacePage = 'dashboard' | 'predict' | 'pipeline' | 'drift' | 'chat'
+export type WorkspacePage =
+  | 'dashboard'
+  | 'predict'
+  | 'pipeline'
+  | 'drift'
+  | 'chat'
+  | 'models'
+  | 'approvals'
 
 interface NavItem {
   id: WorkspacePage
@@ -15,6 +22,7 @@ const ITEMS: NavItem[] = [
   { id: 'predict', label: 'Predict CSV', Icon: FileUp, hint: 'Import CSV → predictions + chart' },
   { id: 'pipeline', label: 'Data Pipeline', Icon: Workflow, hint: 'Upload → GCS → BigQuery → Redis' },
   { id: 'drift', label: 'Drift & Retrain', Icon: ShieldAlert, hint: 'Drift reports + retrain DAG' },
+  { id: 'models', label: 'Models', Icon: Boxes, hint: 'Registry versions & promotion' },
   { id: 'chat', label: 'Agent Chat', Icon: Sparkles, hint: 'Multi-agent ReAct workspace' },
 ]
 
@@ -25,6 +33,9 @@ interface Props {
   selectedDataset: string
   onDatasetChange: (dataset: string) => void
   datasetError: string | null
+  user: AuthUser
+  onLogout: () => void
+  pendingCount: number
 }
 
 export function Sidebar({
@@ -34,6 +45,9 @@ export function Sidebar({
   selectedDataset,
   onDatasetChange,
   datasetError,
+  user,
+  onLogout,
+  pendingCount,
 }: Props) {
   return (
     <aside className="flex w-full flex-shrink-0 flex-col border-b border-zinc-800 bg-zinc-950/95 md:h-full md:w-60 md:border-b-0 md:border-r">
@@ -97,11 +111,50 @@ export function Sidebar({
             </button>
           )
         })}
+
+        {user.role === 'manager' && (
+          <button
+            onClick={() => onChange('approvals')}
+            className={`group flex min-w-fit items-start gap-2 rounded-md border px-2.5 py-2 text-left transition-colors md:w-full md:gap-3 md:px-3 md:py-2.5 ${
+              current === 'approvals'
+                ? 'border-emerald-500/30 bg-emerald-600/15 text-emerald-200'
+                : 'border-transparent text-zinc-300 hover:bg-zinc-900/80'
+            }`}
+          >
+            <BadgeCheck
+              className={`h-4 w-4 mt-0.5 flex-shrink-0 ${current === 'approvals' ? 'text-emerald-300' : 'text-zinc-500 group-hover:text-zinc-300'}`}
+            />
+            <div className="flex flex-1 flex-col leading-tight">
+              <span className="flex items-center gap-2 text-sm font-medium">
+                Approvals
+                {pendingCount > 0 && (
+                  <span className="rounded-full bg-amber-500/20 px-1.5 text-[10px] font-semibold text-amber-300">
+                    {pendingCount}
+                  </span>
+                )}
+              </span>
+              <span className="hidden text-[11px] text-zinc-500 md:block">Promotion requests</span>
+            </div>
+          </button>
+        )}
       </nav>
 
-      <div className="hidden border-t border-zinc-800 p-3 text-[10px] text-zinc-500 md:block">
-        Backend: <span className="text-zinc-300">FastAPI</span> · Agent:{' '}
-        <span className="text-zinc-300">OpenRouter</span>
+      <div className="hidden border-t border-zinc-800 p-3 md:block">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col leading-tight">
+            <span className="text-xs font-medium text-zinc-200">{user.username}</span>
+            <span className={`text-[10px] uppercase ${user.role === 'manager' ? 'text-amber-400' : 'text-emerald-400'}`}>
+              {user.role}
+            </span>
+          </div>
+          <button
+            onClick={onLogout}
+            title="Sign out"
+            className="rounded-md border border-zinc-800 p-1.5 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </aside>
   )

@@ -167,6 +167,16 @@ export default function PipelinePage({ dataset }: { dataset: DatasetConfig | nul
             <div className="text-right text-[11px] text-zinc-500">
               <div>{dataset.source_type} · {dataset.table_name}</div>
               <div>ingest {dataset.schedule}</div>
+              <button
+                onClick={() => {
+                  const u = new URL(window.location.href)
+                  u.searchParams.set('page', 'models')
+                  window.location.href = u.toString()
+                }}
+                className="mt-1 text-emerald-400 underline hover:text-emerald-300"
+              >
+                View results in Models →
+              </button>
             </div>
           )}
         </div>

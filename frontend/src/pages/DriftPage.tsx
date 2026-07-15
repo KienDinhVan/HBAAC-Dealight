@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, ShieldAlert, RefreshCcw, PlayCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  apiFetch,
   listDriftReports,
   driftHtmlUrl,
   triggerRetrain,
@@ -19,6 +20,16 @@ export default function DriftPage() {
   const [retrain, setRetrain] = useState<RetrainTriggerResponse | null>(null)
   const [retrainState, setRetrainState] = useState<string | null>(null)
   const [reason, setReason] = useState('Drift detected — manual retrain from workspace')
+  const [reportHtml, setReportHtml] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!selected) return
+    setReportHtml(null)
+    apiFetch(driftHtmlUrl(selected.report_id, type))
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then(setReportHtml)
+      .catch((e: Error) => setError(e.message))
+  }, [selected, type])
 
   async function load() {
     setLoading(true)
@@ -164,7 +175,7 @@ export default function DriftPage() {
             <iframe
               key={`${selected.report_id}-${type}`}
               title="Evidently drift report"
-              src={driftHtmlUrl(selected.report_id, type)}
+              srcDoc={reportHtml ?? '<p style="font-family:sans-serif;color:#666">Loading report…</p>'}
               sandbox="allow-same-origin allow-scripts"
               className="h-full w-full rounded-xl border border-zinc-800 bg-white"
             />
