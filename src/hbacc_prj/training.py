@@ -311,16 +311,16 @@ def train_and_log(
             raise ValueError("Registered model version not found after MLflow logging")
         primary_version = str(matching[-1].version)
         registered_versions[model_names[0]] = primary_version
-        client.transition_model_version_stage(
-            name=model_names[0], version=primary_version, stage="Staging"
+        client.set_registered_model_alias(
+            name=model_names[0], alias="staging", version=primary_version
         )
         for alias_name in model_names[1:]:
             alias_version = mlflow.register_model(model_info.model_uri, alias_name)
             registered_versions[alias_name] = str(alias_version.version)
-            client.transition_model_version_stage(
+            client.set_registered_model_alias(
                 name=alias_name,
+                alias="staging",
                 version=str(alias_version.version),
-                stage="Staging",
             )
 
     report.update(
