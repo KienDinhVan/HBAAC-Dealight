@@ -236,3 +236,20 @@ class OnlineStoreItemResponse(BaseModel):
     item_code: str
     found: bool
     record: dict[str, str] | None = None
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    username: str
+    role: str
+
+
+class MeResponse(BaseModel):
+    username: str
+    role: str

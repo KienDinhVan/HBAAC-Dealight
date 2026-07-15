@@ -29,7 +29,9 @@ from api.app.clients.openrouter import OpenRouterClient
 from api.app.clients.redis_store import OnlineStoreClient
 from api.app.config import get_settings
 from api.app.infra.approval import ApprovalStore
+from api.app.infra.user_store import UserStore
 from api.app.repository import ForecastRepository
+from api.app.routers import auth as auth_router_module
 from api.app.routers import chat as chat_router_module
 from api.app.routers import datasets as datasets_router_module
 from api.app.routers import drift as drift_router_module
@@ -88,6 +90,7 @@ settings = get_settings()
 async def _lifespan(app: FastAPI):
     """Initialise agents, Airflow client, and DuckDB sales loader on startup."""
     app.state.repository = ForecastRepository(settings.database_url)
+    app.state.user_store = UserStore(settings.database_url)
     app.state.approval_store = ApprovalStore()
     app.state.airflow_client = AirflowClient(
         base_url=settings.airflow_base_url,
@@ -174,6 +177,7 @@ app.include_router(predict_router_module.router)
 app.include_router(drift_router_module.router)
 app.include_router(retrain_router_module.router)
 app.include_router(ingest_router_module.router)
+app.include_router(auth_router_module.router)
 
 
 def _repository(request: Request) -> ForecastRepository:
