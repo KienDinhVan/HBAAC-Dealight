@@ -113,3 +113,36 @@ terragrunt run-all destroy
 
 ~$200–290/tháng khi bật liên tục (GKE Autopilot pods + Cloud SQL db-g1-small + Memorystore 1GB
 + GCLB). Destroy khi không dùng — dựng lại mất ~40 phút + 1 lần CD chạy.
+
+## Sprint 09 — auth + model promotion
+
+One-time setup after deploying the sprint-09 image:
+
+```bash
+# 1. Add secrets (generate a strong JWT secret + user passwords)
+kubectl -n dealight patch secret platform-secrets --type merge -p "{\"stringData\":{
+  \"JWT_SECRET\": \"$(openssl rand -hex 32)\",
+  \"SEED_DEV_PASSWORD\": \"<choose>\",
+  \"SEED_MANAGER_PASSWORD\": \"<choose>\"
+}}"
+kubectl -n dealight rollout restart deploy/forecast-api
+
+# 2. Apply the schema migration (same pattern as sprint 07)
+POD=$(kubectl -n dealight get pod -l app=forecast-api -o jsonpath='{.items[0].metadata.name}')
+kubectl -n dealight cp scripts/sprint_09_auth_promotion_schema.sql $POD:/tmp/s09.sql
+kubectl -n dealight exec $POD -- python -c "import os,psycopg; c=psycopg.connect(os.environ['DATABASE_URL']); c.execute(open('/tmp/s09.sql').read()); c.commit()"
+
+# 3. Seed users (reads SEED_* + DATABASE_URL from the pod env)
+kubectl -n dealight exec $POD -- python scripts/seed_users.py
+
+# 4. Bootstrap @production aliases (once)
+kubectl -n dealight exec $POD -- python scripts/bootstrap_model_aliases.py
+```
+
+Smoke checklist:
+- Login as dev1 and manager1 (http://136.68.214.220) — dev has no Approvals page.
+- Models page shows versions of {dataset}-forecaster with alias badges.
+- Dev requests promote on the @staging candidate; manager approves in Approvals.
+- Next Predict CSV run uses the new version (check forecast-api logs for
+  "Loading production model models:/...@production").
+- Dev calling POST /api/v1/promotion-requests/{id}/approve directly gets 403.

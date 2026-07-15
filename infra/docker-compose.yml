@@ -202,6 +202,9 @@ services:
       MONITORING_DIR: /opt/project/data/monitoring
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_MODEL_URI: ${MLFLOW_MODEL_URI:-}
+      JWT_SECRET: ${JWT_SECRET:-dev-insecure-secret}
+      SEED_DEV_PASSWORD: ${SEED_DEV_PASSWORD:-}
+      SEED_MANAGER_PASSWORD: ${SEED_MANAGER_PASSWORD:-}
       INLINE_PREDICT_MAX_ROWS: ${INLINE_PREDICT_MAX_ROWS:-50000}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4000,http://127.0.0.1:4000,http://localhost:3000}
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
