@@ -73,6 +73,8 @@ def test_me_with_garbage_token_401(client: TestClient) -> None:
 
 def test_business_routes_require_auth() -> None:
     app.dependency_overrides.pop(require_user, None)
+    # bare TestClient never runs lifespan; /metrics touches app.state.repository
+    app.state.repository = MagicMock()
     bare = TestClient(app)
     assert bare.get("/forecast-runs/latest").status_code == 401
     assert bare.get("/api/v1/datasets").status_code == 401

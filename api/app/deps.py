@@ -11,7 +11,9 @@ from api.app.clients.duckdb_client import DuckDBClient
 from api.app.clients.gcs import GcsUploader
 from api.app.clients.redis_store import OnlineStoreClient
 from api.app.config import get_settings
+from api.app.clients.mlflow_registry import ModelRegistryClient
 from api.app.infra.approval import ApprovalStore
+from api.app.infra.promotion_store import PromotionStore
 from api.app.infra.user_store import UserStore
 from api.app.repository import ForecastRepository
 
@@ -52,6 +54,14 @@ def get_online_store(request: Request) -> OnlineStoreClient | None:
 
 def get_user_store(request: Request) -> UserStore:
     return request.app.state.user_store
+
+
+def get_promotion_store(request: Request) -> PromotionStore:
+    return request.app.state.promotion_store
+
+
+def get_model_registry(request: Request) -> ModelRegistryClient:
+    return request.app.state.model_registry
 
 
 def require_user(

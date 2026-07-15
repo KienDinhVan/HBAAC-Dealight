@@ -253,3 +253,53 @@ class LoginResponse(BaseModel):
 class MeResponse(BaseModel):
     username: str
     role: str
+
+
+class ModelVersionItem(BaseModel):
+    version: str
+    run_id: str | None = None
+    created_at: int
+    aliases: list[str]
+    metrics: dict[str, float]
+
+
+class ModelVersionsResponse(BaseModel):
+    dataset: str
+    model_name: str
+    versions: list[ModelVersionItem]
+
+
+class ModelCompareResponse(BaseModel):
+    dataset: str
+    model_name: str
+    candidate: ModelVersionItem
+    production: ModelVersionItem | None = None
+
+
+class PromotionRequestCreate(BaseModel):
+    candidate_version: str
+    note: str | None = None
+
+
+class PromotionReviewBody(BaseModel):
+    comment: str | None = None
+
+
+class PromotionRequestItem(BaseModel):
+    id: int
+    dataset: str
+    model_name: str
+    candidate_version: str
+    current_prod_version: str | None = None
+    metrics_snapshot: dict
+    requested_by: str
+    request_note: str | None = None
+    status: str
+    reviewed_by: str | None = None
+    review_comment: str | None = None
+    created_at: datetime
+    reviewed_at: datetime | None = None
+
+
+class PromotionRequestListResponse(BaseModel):
+    items: list[PromotionRequestItem]
