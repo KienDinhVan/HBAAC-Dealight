@@ -6,7 +6,7 @@ from datetime import date
 from time import perf_counter
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Path, Query, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -28,6 +28,7 @@ from api.app.clients.gcs import GcsUploader
 from api.app.clients.openrouter import OpenRouterClient
 from api.app.clients.redis_store import OnlineStoreClient
 from api.app.config import get_settings
+from api.app.deps import require_user
 from api.app.infra.approval import ApprovalStore
 from api.app.infra.user_store import UserStore
 from api.app.repository import ForecastRepository
@@ -171,13 +172,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(chat_router_module.router)
-app.include_router(datasets_router_module.router)
-app.include_router(predict_router_module.router)
-app.include_router(drift_router_module.router)
-app.include_router(retrain_router_module.router)
-app.include_router(ingest_router_module.router)
-app.include_router(auth_router_module.router)
+_protected = [Depends(require_user)]
+
+app.include_router(chat_router_module.router, dependencies=_protected)
+app.include_router(datasets_router_module.router, dependencies=_protected)
+app.include_router(predict_router_module.router, dependencies=_protected)
+app.include_router(drift_router_module.router, dependencies=_protected)
+app.include_router(retrain_router_module.router, dependencies=_protected)
+app.include_router(ingest_router_module.router, dependencies=_protected)
+app.include_router(auth_router_module.router)  # login open; /me self-protects
 
 
 def _repository(request: Request) -> ForecastRepository:
@@ -246,7 +249,7 @@ def version() -> VersionResponse:
     )
 
 
-@app.get("/forecast-runs/latest", response_model=ForecastRunResponse)
+@app.get("/forecast-runs/latest", response_model=ForecastRunResponse, dependencies=_protected)
 def latest_forecast_run(request: Request) -> dict[str, Any]:
     run = _repository(request).latest_run()
     if run is None:
@@ -255,12 +258,12 @@ def latest_forecast_run(request: Request) -> dict[str, Any]:
     return run
 
 
-@app.get("/model/current", response_model=ForecastRunResponse)
+@app.get("/model/current", response_model=ForecastRunResponse, dependencies=_protected)
 def current_model(request: Request) -> dict[str, Any]:
     return latest_forecast_run(request)
 
 
-@app.get("/forecast/top-skus", response_model=TopSkusResponse)
+@app.get("/forecast/top-skus", response_model=TopSkusResponse, dependencies=_protected)
 def get_top_skus(
     target_date: date,
     request: Request,
@@ -284,7 +287,7 @@ def get_top_skus(
     }
 
 
-@app.get("/forecast/summary", response_model=ForecastSummaryResponse)
+@app.get("/forecast/summary", response_model=ForecastSummaryResponse, dependencies=_protected)
 def get_summary(target_date: date, request: Request) -> dict[str, Any]:
     run, summary = _repository(request).summary(target_date)
     if run is None or summary is None:
@@ -306,7 +309,7 @@ def get_summary(target_date: date, request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/forecast/{item_code}", response_model=ForecastResponse)
+@app.get("/forecast/{item_code}", response_model=ForecastResponse, dependencies=_protected)
 def get_forecast(
     request: Request,
     item_code: str = Path(pattern=ITEM_CODE_PATTERN),
@@ -328,7 +331,7 @@ def get_forecast(
     }
 
 
-@app.get("/monitoring/latest", response_model=MonitoringReportResponse)
+@app.get("/monitoring/latest", response_model=MonitoringReportResponse, dependencies=_protected)
 def latest_monitoring_report(request: Request) -> dict[str, Any]:
     report = _repository(request).latest_monitoring_report()
     if report is None:

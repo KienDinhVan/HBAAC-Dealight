@@ -69,3 +69,14 @@ def test_me_with_garbage_token_401(client: TestClient) -> None:
     app.dependency_overrides.pop(require_user, None)
     resp = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer junk"})
     assert resp.status_code == 401
+
+
+def test_business_routes_require_auth() -> None:
+    app.dependency_overrides.pop(require_user, None)
+    bare = TestClient(app)
+    assert bare.get("/forecast-runs/latest").status_code == 401
+    assert bare.get("/api/v1/datasets").status_code == 401
+    assert bare.post("/retrain/trigger", json={"reason": "x"}).status_code == 401
+    # probes stay open (never 401)
+    assert bare.get("/version").status_code == 200
+    assert bare.get("/metrics").status_code == 200
