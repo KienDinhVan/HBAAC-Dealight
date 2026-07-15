@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "bcrypt>=4.1",
     "boto3==1.38.33",
     "duckdb>=1.1.0",
     "evidently==0.7.21",
@@ -23,6 +24,7 @@ dependencies = [
     "psycopg[binary]>=3.2.9",
     "pyarrow>=19,<20",
     "pydantic>=2.10.0",
+    "pyjwt>=2.8",
     "python-multipart>=0.0.9",
     "pyyaml>=6.0.3",
     "redis>=5.0",
