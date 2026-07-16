@@ -7,6 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# LightGBM (mlflow model load) needs the GNU OpenMP runtime at inference time.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir uv==0.10.2
 
 COPY pyproject.toml uv.lock README.md .python-version ./
