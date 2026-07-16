@@ -17,7 +17,7 @@
     {
       "title": "API 5xx Rate",
       "type": "timeseries",
-      "targets": [{"expr": "sum(rate(http_requests_total{status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1)", "refId": "A"}],
+      "targets": [{"expr": "(sum(rate(http_requests_total{status_code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_requests_total[5m])), 1)", "refId": "A"}],
       "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
     },
     {

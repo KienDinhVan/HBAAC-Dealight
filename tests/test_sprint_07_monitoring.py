@@ -1,14 +1,58 @@
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import pandas as pd
 
 from hbacc_prj.monitoring import (
     ForecastQuality,
+    _resolve_monitoring_dir,
     drift_summary,
     evaluate_alerts,
     regression_metrics,
     summarize_forecast,
 )
+
+
+def test_monitoring_dir_honors_env(monkeypatch, tmp_path) -> None:
+    configured = tmp_path / "monitoring"
+    monkeypatch.setenv("MONITORING_REPORT_DIR", str(configured))
+
+    assert _resolve_monitoring_dir() == configured
+    assert configured.exists()
+
+
+def test_monitoring_dir_falls_back_when_unwritable(monkeypatch) -> None:
+    monkeypatch.setenv("MONITORING_REPORT_DIR", "/proc/not-writable/monitoring")
+
+    resolved = _resolve_monitoring_dir()
+
+    assert resolved.exists()
+    assert str(resolved).startswith(tempfile.gettempdir())
+
+
+def test_monitoring_dir_falls_back_when_existing_dir_is_read_only(
+    monkeypatch, tmp_path
+) -> None:
+    configured = tmp_path / "monitoring"
+    configured.mkdir()
+    real_named_temporary_file = tempfile.NamedTemporaryFile
+
+    def named_temporary_file(*args, **kwargs):
+        if Path(kwargs["dir"]) == configured:
+            raise PermissionError("read-only directory")
+        return real_named_temporary_file(*args, **kwargs)
+
+    monkeypatch.setenv("MONITORING_REPORT_DIR", str(configured))
+    monkeypatch.setattr(
+        "hbacc_prj.monitoring.tempfile.NamedTemporaryFile", named_temporary_file
+    )
+
+    resolved = _resolve_monitoring_dir()
+
+    assert resolved != configured
+    assert str(resolved).startswith(tempfile.gettempdir())
 
 
 def test_forecast_quality_accepts_complete_non_negative_forecast() -> None:

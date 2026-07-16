@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -438,6 +440,26 @@ def dump_report(report: dict[str, Any], output_path: Path) -> None:
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
 
+def _resolve_monitoring_dir() -> Path:
+    """Return a writable location for generated monitoring reports."""
+    configured = Path(os.environ.get("MONITORING_REPORT_DIR", "data/monitoring"))
+    try:
+        configured.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=configured):
+            pass
+        return configured
+    except OSError as exc:
+        fallback = Path(tempfile.gettempdir()) / "monitoring-reports"
+        fallback.mkdir(parents=True, exist_ok=True)
+        logging.getLogger(__name__).warning(
+            "Monitoring dir %s not writable (%s); using %s",
+            configured,
+            exc,
+            fallback,
+        )
+        return fallback
+
+
 def monitor_dataset(cfg: DatasetConfig) -> dict[str, Any]:
     """Thin per-dataset adapter over `run_monitoring` (Sprint 7 entry point).
 
@@ -456,7 +478,7 @@ def monitor_dataset(cfg: DatasetConfig) -> dict[str, Any]:
         "postgresql://forecast:forecast-local-only@localhost:5432/sku_forecasting",
     )
     schema_path = Path("scripts/sprint_07_monitoring_schema.sql")
-    output_dir = Path("data/monitoring")
+    output_dir = _resolve_monitoring_dir()
     report_id = f"{cfg.name}-monitoring"
 
     with psycopg.connect(database_url) as connection:
