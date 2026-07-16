@@ -7,12 +7,51 @@ import pandas as pd
 
 from hbacc_prj.monitoring import (
     ForecastQuality,
+    _publish_monitoring_report,
     _resolve_monitoring_dir,
     drift_summary,
     evaluate_alerts,
     regression_metrics,
     summarize_forecast,
 )
+
+
+def test_publish_monitoring_report_uses_local_path_without_gcs(
+    monkeypatch, tmp_path
+) -> None:
+    report = tmp_path / "report.html"
+    report.write_text("report")
+    monkeypatch.delenv("GCS_BUCKET", raising=False)
+
+    assert _publish_monitoring_report(report) == str(report)
+
+
+def test_publish_monitoring_report_uploads_to_gcs(monkeypatch, tmp_path) -> None:
+    report = tmp_path / "report.html"
+    report.write_text("report")
+    uploads = []
+
+    class Blob:
+        def upload_from_filename(self, filename, content_type):
+            uploads.append((filename, content_type))
+
+    class Bucket:
+        def blob(self, name):
+            assert name == "monitoring/report.html"
+            return Blob()
+
+    class Client:
+        def bucket(self, name):
+            assert name == "data-bucket"
+            return Bucket()
+
+    monkeypatch.setenv("GCS_BUCKET", "data-bucket")
+    monkeypatch.setattr("hbacc_prj.monitoring.storage.Client", Client)
+
+    uri = _publish_monitoring_report(report)
+
+    assert uri == "gs://data-bucket/monitoring/report.html"
+    assert uploads == [(str(report), "text/html")]
 
 
 def test_monitoring_dir_honors_env(monkeypatch, tmp_path) -> None:

@@ -4,8 +4,10 @@ import logging
 from pathlib import Path
 from typing import Literal
 
+from google.api_core.exceptions import GoogleAPIError, NotFound
+from google.cloud import storage
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from api.app.config import get_settings
 from api.app.deps import get_repository
@@ -35,7 +37,7 @@ def get_drift_html(
     report_id: str,
     type: Literal["data", "prediction"] = Query("data"),
     repo: ForecastRepository = Depends(get_repository),
-) -> FileResponse:
+) -> Response:
     report = repo.get_monitoring_report(report_id)
     if report is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "report_id not found")
@@ -45,6 +47,8 @@ def get_drift_html(
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No {type} drift HTML for this report")
 
     settings = get_settings()
+    if rel_path.startswith("gs://"):
+        return _gcs_report_response(rel_path, settings.gcs_bucket)
     candidate = _monitoring_candidate(Path(rel_path), Path(settings.monitoring_dir))
 
     monitoring_root = Path(settings.monitoring_dir).resolve()
@@ -58,6 +62,40 @@ def get_drift_html(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Report HTML not on disk")
     return FileResponse(
         resolved,
+        media_type="text/html",
+        headers={
+            "Content-Security-Policy": "frame-ancestors 'self'",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def _gcs_report_response(uri: str, configured_bucket: str) -> Response:
+    bucket_name, separator, blob_name = uri.removeprefix("gs://").partition("/")
+    if (
+        not separator
+        or not configured_bucket
+        or bucket_name != configured_bucket
+        or not blob_name.startswith("monitoring/")
+        or not blob_name.endswith(".html")
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Report object is not allowed")
+    try:
+        content = (
+            storage.Client()
+            .bucket(bucket_name)
+            .blob(blob_name)
+            .download_as_bytes()
+        )
+    except NotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Report object not found") from exc
+    except GoogleAPIError as exc:
+        _logger.exception("Could not read drift report %s", uri)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "Could not read report storage"
+        ) from exc
+    return Response(
+        content=content,
         media_type="text/html",
         headers={
             "Content-Security-Policy": "frame-ancestors 'self'",

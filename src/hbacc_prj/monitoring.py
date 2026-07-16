@@ -13,6 +13,7 @@ import pandas as pd
 import psycopg
 from evidently import DataDefinition, Dataset, Report
 from evidently.presets import DataDriftPreset
+from google.cloud import storage
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
@@ -299,6 +300,19 @@ def create_evidently_report(
     result.save_html(str(path))
 
 
+def _publish_monitoring_report(path: Path) -> str:
+    """Upload a report to shared GCS storage when running in cloud."""
+    bucket_name = os.environ.get("GCS_BUCKET", "")
+    if not bucket_name:
+        return str(path)
+    prefix = os.environ.get("MONITORING_GCS_PREFIX", "monitoring").strip("/")
+    blob_name = "/".join(part for part in (prefix, path.name) if part)
+    storage.Client().bucket(bucket_name).blob(blob_name).upload_from_filename(
+        str(path), content_type="text/html"
+    )
+    return f"gs://{bucket_name}/{blob_name}"
+
+
 def save_report(
     connection: psycopg.Connection[Any],
     report_id: str,
@@ -307,8 +321,8 @@ def save_report(
     accuracy: dict[str, float | int | str],
     drift: dict[str, Any],
     alerts: list[str],
-    data_drift_path: Path,
-    prediction_drift_path: Path | None,
+    data_drift_path: str | Path,
+    prediction_drift_path: str | Path | None,
 ) -> None:
     connection.execute(
         """
@@ -383,8 +397,10 @@ def run_monitoring(
     feature_drift = drift_summary(feature_reference, feature_current, DRIFT_COLUMNS)
     data_drift_path = output_dir / f"{report_id}_data_drift.html"
     create_evidently_report(feature_reference, feature_current, data_drift_path)
+    data_drift_uri = _publish_monitoring_report(data_drift_path)
 
     prediction_drift_path: Path | None = None
+    prediction_drift_uri: str | None = None
     prediction_windows = read_prediction_windows(connection, run["run_id"])
     prediction_drift: dict[str, Any] = {
         "method": "psi",
@@ -399,6 +415,7 @@ def run_monitoring(
         prediction_drift = drift_summary(previous, current, ["predicted_quantity"])
         prediction_drift_path = output_dir / f"{report_id}_prediction_drift.html"
         create_evidently_report(previous, current, prediction_drift_path)
+        prediction_drift_uri = _publish_monitoring_report(prediction_drift_path)
 
     drift = {
         "drift_detected": bool(
@@ -416,8 +433,8 @@ def run_monitoring(
         accuracy,
         drift,
         alerts,
-        data_drift_path,
-        prediction_drift_path,
+        data_drift_uri,
+        prediction_drift_uri,
     )
     return {
         "report_id": report_id,
@@ -428,10 +445,8 @@ def run_monitoring(
         "drift": drift,
         "alerts": alerts,
         "status": "alert" if alerts else "success",
-        "data_drift_report_path": str(data_drift_path),
-        "prediction_drift_report_path": str(prediction_drift_path)
-        if prediction_drift_path
-        else None,
+        "data_drift_report_path": data_drift_uri,
+        "prediction_drift_report_path": prediction_drift_uri,
     }
 
 

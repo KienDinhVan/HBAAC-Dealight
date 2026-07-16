@@ -56,7 +56,9 @@ def client(tmp_path):
     from api.app.routers import drift as drift_router
 
     original = config_module.get_settings()
-    patched = replace(original, monitoring_dir=str(tmp_path))
+    patched = replace(
+        original, monitoring_dir=str(tmp_path), gcs_bucket="test-data-bucket"
+    )
     with patch.object(drift_router, "get_settings", return_value=patched):
         yield TestClient(app)
 
@@ -85,3 +87,36 @@ def test_drift_html_missing_type_404(client: TestClient) -> None:
 def test_drift_unknown_report_404(client: TestClient) -> None:
     resp = client.get("/drift/reports/does-not-exist/html?type=data")
     assert resp.status_code == 404
+
+
+def test_drift_html_serves_gcs_object(client: TestClient) -> None:
+    from api.app.routers import drift as drift_router
+
+    gcs_sample = {
+        **SAMPLE,
+        "data_drift_report_path": (
+            "gs://test-data-bucket/monitoring/data_drift_20260527.html"
+        ),
+    }
+    app.state.repository = FakeRepo()
+    app.state.repository.get_monitoring_report = lambda _: gcs_sample
+
+    class Blob:
+        def download_as_bytes(self):
+            return b"<!doctype html><html><body>gcs drift</body></html>"
+
+    class Bucket:
+        def blob(self, name):
+            assert name == "monitoring/data_drift_20260527.html"
+            return Blob()
+
+    class Client:
+        def bucket(self, name):
+            assert name == "test-data-bucket"
+            return Bucket()
+
+    with patch.object(drift_router.storage, "Client", Client):
+        resp = client.get(f"/drift/reports/{SAMPLE['report_id']}/html?type=data")
+
+    assert resp.status_code == 200
+    assert "gcs drift" in resp.text
