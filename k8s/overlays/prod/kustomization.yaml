@@ -14,7 +14,7 @@ images:
   newTag: 0795c4d3f89e9ddc7e65ebd0766063523a1a99b0
 - name: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/forecast-api
   newName: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/forecast-api
-  newTag: 0795c4d3f89e9ddc7e65ebd0766063523a1a99b0
+  newTag: d0b1251d843de485cd308e60cc377bce4e5e9ae6
 - name: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/mlflow
   newName: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/mlflow
   newTag: 0795c4d3f89e9ddc7e65ebd0766063523a1a99b0
