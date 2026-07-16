@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -129,4 +131,30 @@ def test_report_dir_falls_back_when_unwritable(monkeypatch) -> None:
     monkeypatch.setenv("TRAINING_REPORT_DIR", "/proc/not-writable/reports")
     resolved = _resolve_report_dir()
     assert resolved.exists()
+    assert str(resolved).startswith(tempfile.gettempdir())
+
+
+def test_report_dir_falls_back_when_existing_directory_is_read_only(
+    monkeypatch, tmp_path
+) -> None:
+    import tempfile
+
+    from hbacc_prj.training import _resolve_report_dir
+
+    configured = tmp_path / "reports"
+    configured.mkdir()
+    real_named_temporary_file = tempfile.NamedTemporaryFile
+
+    def named_temporary_file(*args, **kwargs):
+        if Path(kwargs["dir"]) == configured:
+            raise PermissionError("read-only directory")
+        return real_named_temporary_file(*args, **kwargs)
+
+    monkeypatch.setenv("TRAINING_REPORT_DIR", str(configured))
+    monkeypatch.setattr(
+        "hbacc_prj.training.tempfile.NamedTemporaryFile", named_temporary_file
+    )
+
+    resolved = _resolve_report_dir()
+    assert resolved != configured
     assert str(resolved).startswith(tempfile.gettempdir())

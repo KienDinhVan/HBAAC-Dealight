@@ -102,6 +102,7 @@ resource "kubernetes_config_map" "platform" {
     SERVICE_VERSION              = "0.1.0"
     AIRFLOW__CORE__EXECUTOR      = "LocalExecutor"
     AIRFLOW__CORE__LOAD_EXAMPLES = "false"
+    AIRFLOW__WEBSERVER__WORKERS  = "2"
     AIRFLOW__API__AUTH_BACKENDS  = "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
     GIT_PYTHON_REFRESH           = "quiet"
     PYTHONPATH                   = "/opt/project/src:/opt/project"

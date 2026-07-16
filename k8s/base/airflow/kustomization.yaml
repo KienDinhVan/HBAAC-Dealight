@@ -5,4 +5,5 @@ resources:
   - init-job.yaml
   - webserver-deployment.yaml
   - scheduler-deployment.yaml
+  - scheduler-pdb.yaml
   - service.yaml

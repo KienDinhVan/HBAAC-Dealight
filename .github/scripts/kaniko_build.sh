@@ -33,11 +33,9 @@ metadata:
   namespace: ${NS}
 spec:
   backoffLimit: 2
+  activeDeadlineSeconds: 2400
   ttlSecondsAfterFinished: 7200
   template:
-    metadata:
-      annotations:
-        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
       serviceAccountName: kaniko-builder
       restartPolicy: Never
@@ -54,9 +52,9 @@ ${ARGS}
               mountPath: /kaniko/.docker
           resources:
             requests:
-              cpu: "1"
-              memory: 4Gi
-              ephemeral-storage: 10Gi
+              cpu: 500m
+              memory: 3Gi
+              ephemeral-storage: 8Gi
       volumes:
         - name: docker-config
           configMap:

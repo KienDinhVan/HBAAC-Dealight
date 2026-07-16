@@ -48,7 +48,14 @@ def test_builds_five_dags_for_hbaac(monkeypatch):
     ]
     assert dags["ingest_hbaac_sku"].schedule_interval == "0 2 * * *"
     assert dags["train_hbaac_sku"].schedule_interval == "0 4 * * 0"
-    assert dags["ingest_hbaac_sku"].tasks[0].kwargs["retries"] == 2
+    task = dags["ingest_hbaac_sku"].tasks[0]
+    assert dags["train_hbaac_sku"].kwargs["max_active_runs"] == 1
+    assert (
+        dags["train_hbaac_sku"].kwargs["dagrun_timeout"].total_seconds() == 45 * 60
+    )
+    assert task.kwargs["retries"] == 1
+    assert task.kwargs["retry_delay"].total_seconds() == 60
+    assert task.kwargs["execution_timeout"].total_seconds() == 30 * 60
     assert dags["ingest_hbaac_sku"].tasks[0].kwargs["cwd"].endswith(
         "HBAAC-Dealight"
     )

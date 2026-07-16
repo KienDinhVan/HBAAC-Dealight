@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from airflow import DAG
@@ -29,6 +29,7 @@ def _dag(dag_id: str, schedule: str | None, cfg: DatasetConfig, stage: str) -> D
         # LocalExecutor: concurrent runs of the same stage fight over the
         # scheduler pod's CPU (3 parallel trains ~3x slower each).
         max_active_runs=1,
+        dagrun_timeout=timedelta(minutes=45),
         tags=["dataset", cfg.name],
     )
     BashOperator(
@@ -36,7 +37,9 @@ def _dag(dag_id: str, schedule: str | None, cfg: DatasetConfig, stage: str) -> D
         bash_command=CMD.format(name=cfg.name, stage=stage),
         cwd=str(PROJECT_ROOT),
         dag=dag,
-        retries=2,
+        retries=1,
+        retry_delay=timedelta(minutes=1),
+        execution_timeout=timedelta(minutes=30),
     )
     return dag
 

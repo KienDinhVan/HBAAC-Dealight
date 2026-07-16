@@ -351,6 +351,8 @@ def _resolve_report_dir() -> Path:
     configured = Path(os.environ.get("TRAINING_REPORT_DIR", "data/features"))
     try:
         configured.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=configured):
+            pass
         return configured
     except OSError as exc:
         fallback = Path(tempfile.gettempdir()) / "training-reports"

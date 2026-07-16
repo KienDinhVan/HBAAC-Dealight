@@ -24,6 +24,9 @@ spec:
                 name: platform-config
             - secretRef:
                 name: platform-secrets
+          env:
+            - name: AIRFLOW__WEBSERVER__WORKERS
+              value: "2"
           readinessProbe:
             httpGet:
               path: /health
@@ -32,5 +35,5 @@ spec:
             periodSeconds: 15
           resources:
             requests:
-              cpu: "1"
-              memory: 2Gi
+              cpu: 250m
+              memory: 1Gi

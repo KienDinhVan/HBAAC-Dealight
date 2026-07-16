@@ -31,5 +31,5 @@ spec:
                 name: platform-secrets
           resources:
             requests:
-              cpu: 500m
-              memory: 1Gi
+              cpu: 250m
+              memory: 768Mi

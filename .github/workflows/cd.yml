@@ -49,18 +49,15 @@ jobs:
             | tar xz -C "$HOME/.local/bin" kustomize
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Launch Kaniko builds (api, web, mlflow, airflow-base)
+      - name: Build first wave sequentially
         run: |
           .github/scripts/kaniko_build.sh launch forecast-api api/Dockerfile ""
-          .github/scripts/kaniko_build.sh launch web Dockerfile frontend
-          .github/scripts/kaniko_build.sh launch mlflow Dockerfile infra/mlflow
-          .github/scripts/kaniko_build.sh launch airflow-base Dockerfile infra/airflow
-
-      - name: Wait for first wave
-        run: |
           .github/scripts/kaniko_build.sh wait forecast-api
+          .github/scripts/kaniko_build.sh launch web Dockerfile frontend
           .github/scripts/kaniko_build.sh wait web
+          .github/scripts/kaniko_build.sh launch mlflow Dockerfile infra/mlflow
           .github/scripts/kaniko_build.sh wait mlflow
+          .github/scripts/kaniko_build.sh launch airflow-base Dockerfile infra/airflow
           .github/scripts/kaniko_build.sh wait airflow-base
 
       - name: Build airflow (DAGs baked, FROM airflow-base)
@@ -68,6 +65,9 @@ jobs:
           .github/scripts/kaniko_build.sh launch airflow infra/airflow/Dockerfile.gke "" \
             "--build-arg=BASE_IMAGE=${AR}/airflow-base:${GITHUB_SHA}"
           .github/scripts/kaniko_build.sh wait airflow
+
+      - name: Wait for active training runs
+        run: .github/scripts/wait_for_airflow_training.sh
 
       - name: Bump image tags in prod overlay
         run: |
