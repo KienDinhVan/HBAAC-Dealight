@@ -65,3 +65,22 @@ def test_training_success_notification_failure_does_not_raise(monkeypatch):
     )
 
     run_dataset_pipeline._notify_training_success("hbaac_sku", "manual__1", {})
+
+
+def test_post_discord_uses_supported_user_agent(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+    calls = []
+    monkeypatch.setattr(
+        run_dataset_pipeline.requests,
+        "post",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or Response(),
+    )
+
+    run_dataset_pipeline._post_discord("https://discord.test/hook", "done")
+
+    assert calls[0][1]["json"] == {"content": "done"}
+    assert calls[0][1]["headers"]["User-Agent"] == "Dealight-MLOps/1.0"
+    assert calls[0][1]["timeout"] == 10

@@ -12,6 +12,7 @@ import json
 import os
 
 import pandas as pd
+import requests
 
 from hbacc_prj.de_pipeline import build_curated, validate_transactions
 
@@ -25,14 +26,13 @@ BQ_TABLE_NAME = "sales_daily"
 
 
 def _post_discord(webhook_url: str, content: str) -> None:
-    import urllib.request
-
-    request = urllib.request.Request(
+    response = requests.post(
         webhook_url,
-        data=json.dumps({"content": content}).encode(),
-        headers={"Content-Type": "application/json"},
+        json={"content": content},
+        headers={"User-Agent": "Dealight-MLOps/1.0"},
+        timeout=10,
     )
-    urllib.request.urlopen(request, timeout=10)
+    response.raise_for_status()
 
 
 def _report_data_quality(bucket, batch_id: str, summary: dict) -> None:

@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+import requests
+
 from hbacc_prj.connectors.registry import ingest_dataset
 from hbacc_prj.dataset_config import DatasetConfig, load_dataset_config
 
@@ -15,15 +17,13 @@ STAGES = ("ingest", "features", "train", "forecast", "monitor")
 
 
 def _post_discord(webhook_url: str, content: str) -> None:
-    import urllib.request
-
-    request = urllib.request.Request(
+    response = requests.post(
         webhook_url,
-        data=json.dumps({"content": content}).encode(),
-        headers={"Content-Type": "application/json"},
+        json={"content": content},
+        headers={"User-Agent": "Dealight-MLOps/1.0"},
+        timeout=10,
     )
-    with urllib.request.urlopen(request, timeout=10):
-        pass
+    response.raise_for_status()
 
 
 def _notify_training_success(
