@@ -6,11 +6,54 @@ import io
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 from hbacc_prj.connectors.registry import ingest_dataset
 from hbacc_prj.dataset_config import DatasetConfig, load_dataset_config
 
 STAGES = ("ingest", "features", "train", "forecast", "monitor")
+
+
+def _post_discord(webhook_url: str, content: str) -> None:
+    import urllib.request
+
+    request = urllib.request.Request(
+        webhook_url,
+        data=json.dumps({"content": content}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=10):
+        pass
+
+
+def _notify_training_success(
+    dataset: str, batch_id: str, report: dict[str, Any]
+) -> None:
+    """Send a best-effort Discord summary after training fully completes."""
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
+    if not webhook_url:
+        print("INFO: DISCORD_WEBHOOK_URL is not configured; skipping retrain alert")
+        return
+
+    model_metrics = report.get("metrics", {}).get("lightgbm", {})
+    model_name = report.get("registered_model_name") or "not registered"
+    model_version = report.get("registered_model_version") or "n/a"
+    quality_gate = "PASSED" if report.get("passed_registration_rule") else "FAILED"
+    message = (
+        "**[Model retrain] SUCCESS**\n"
+        f"- Dataset: `{dataset}`\n"
+        f"- Airflow run: `{batch_id}`\n"
+        f"- Quality gate: **{quality_gate}**\n"
+        f"- LightGBM WAPE: `{model_metrics.get('wape', 'n/a')}`\n"
+        f"- Best baseline WAPE: `{report.get('best_baseline_wape', 'n/a')}`\n"
+        f"- Model: `{model_name}` version `{model_version}` (`@staging`)\n"
+        f"- MLflow run: `{report.get('mlflow_run_id', 'n/a')}`"
+    )
+    try:
+        _post_discord(webhook_url, message)
+        print(f"Discord retrain alert sent for {dataset} run {batch_id}")
+    except Exception as exc:  # noqa: BLE001 - alerting must not fail training
+        print(f"WARNING: Discord retrain alert failed: {exc}")
 
 
 def _data_root() -> str:
@@ -45,7 +88,7 @@ def _write_canonical(canonical, dataset: str, batch_id: str) -> None:
     canonical.to_parquet(destination, index=False)
 
 
-def run_stage(cfg: DatasetConfig, stage: str, batch_id: str) -> None:
+def run_stage(cfg: DatasetConfig, stage: str, batch_id: str) -> dict[str, Any] | None:
     if stage == "ingest":
         canonical = ingest_dataset(cfg)
         # normalize() emits `attrs` as a dict-per-row column; when a dataset
@@ -61,8 +104,10 @@ def run_stage(cfg: DatasetConfig, stage: str, batch_id: str) -> None:
         return
     if stage == "train":
         from hbacc_prj.training import train_for_dataset
-        train_for_dataset(cfg)
-        return
+
+        report = train_for_dataset(cfg)
+        _notify_training_success(cfg.name, batch_id, report)
+        return report
     if stage == "forecast":
         from hbacc_prj.forecasting import forecast_for_dataset
         forecast_for_dataset(cfg)
