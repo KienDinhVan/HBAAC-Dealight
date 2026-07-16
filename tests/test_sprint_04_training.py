@@ -111,3 +111,22 @@ def test_verify_logged_model_uses_mlflow_logged_model_uri(monkeypatch) -> None:
     _verify_logged_model("models:/m-test", validation, expected)
 
     assert requested_uris == ["models:/m-test"]
+
+
+def test_report_dir_honors_env(monkeypatch, tmp_path) -> None:
+    from hbacc_prj.training import _resolve_report_dir
+
+    monkeypatch.setenv("TRAINING_REPORT_DIR", str(tmp_path / "reports"))
+    resolved = _resolve_report_dir()
+    assert resolved == tmp_path / "reports"
+    assert resolved.exists()
+
+
+def test_report_dir_falls_back_when_unwritable(monkeypatch) -> None:
+    import tempfile
+    from hbacc_prj.training import _resolve_report_dir
+
+    monkeypatch.setenv("TRAINING_REPORT_DIR", "/proc/not-writable/reports")
+    resolved = _resolve_report_dir()
+    assert resolved.exists()
+    assert str(resolved).startswith(tempfile.gettempdir())

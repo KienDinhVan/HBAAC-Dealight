@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
+import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -339,6 +341,26 @@ def train_and_log(
     return report
 
 
+def _resolve_report_dir() -> Path:
+    """Writable directory for the local evaluation report.
+
+    The report is also logged to MLflow as an artifact, so the local copy is
+    best-effort: honor TRAINING_REPORT_DIR, fall back to the system temp dir
+    when the target is not writable (e.g. read-only /opt/project in Airflow).
+    """
+    configured = Path(os.environ.get("TRAINING_REPORT_DIR", "data/features"))
+    try:
+        configured.mkdir(parents=True, exist_ok=True)
+        return configured
+    except OSError as exc:
+        fallback = Path(tempfile.gettempdir()) / "training-reports"
+        fallback.mkdir(parents=True, exist_ok=True)
+        logging.getLogger(__name__).warning(
+            "Report dir %s not writable (%s) — using %s", configured, exc, fallback
+        )
+        return fallback
+
+
 def train_for_dataset(cfg: DatasetConfig) -> dict[str, Any]:
     """Thin per-dataset adapter over `train_and_log` (Sprint 4 entry point).
 
@@ -362,7 +384,7 @@ def train_for_dataset(cfg: DatasetConfig) -> dict[str, Any]:
     feature_version = os.environ.get(
         "FEATURE_VERSION", "sprint-03-v1-top100-a60-h56"
     )
-    output_path = Path(f"data/features/evaluation_{cfg.name}.json")
+    output_path = _resolve_report_dir() / f"evaluation_{cfg.name}.json"
     model_names = (f"{cfg.name}-forecaster",)
     if cfg.name == "hbaac_sku":
         model_names = (MODEL_NAME, *model_names)
