@@ -33,13 +33,26 @@ class ModelRegistryClient:
         return {key: float(metrics[key]) for key in METRIC_KEYS if key in metrics}
 
     def list_versions(self, model_name: str) -> list[dict[str, Any]]:
-        raw = self._mlflow().search_model_versions(f"name = '{model_name}'")
+        client = self._mlflow()
+        raw = client.search_model_versions(f"name = '{model_name}'")
+        # search_model_versions does not populate aliases (MLflow 3.x); the
+        # registered model carries the authoritative alias -> version map.
+        alias_by_version: dict[str, list[str]] = {}
+        try:
+            for alias, version in dict(
+                client.get_registered_model(model_name).aliases or {}
+            ).items():
+                alias_by_version.setdefault(str(version), []).append(alias)
+        except Exception:  # noqa: BLE001
+            _logger.warning("Could not read aliases for %s", model_name)
         versions = [
             {
                 "version": str(mv.version),
                 "run_id": mv.run_id,
                 "created_at": int(mv.creation_timestamp),
-                "aliases": list(mv.aliases or []),
+                "aliases": sorted(
+                    set(mv.aliases or []) | set(alias_by_version.get(str(mv.version), []))
+                ),
                 "metrics": self._run_metrics(mv.run_id) if mv.run_id else {},
             }
             for mv in raw

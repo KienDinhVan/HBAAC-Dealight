@@ -35,8 +35,22 @@ def registry() -> ModelRegistryClient:
             }
         )
     )
+    client.get_registered_model.return_value = SimpleNamespace(
+        aliases={"staging": "1", "production": "2"}
+    )
     reg._client = client  # inject mock
     return reg
+
+
+def test_aliases_merged_from_registered_model(registry: ModelRegistryClient) -> None:
+    # MLflow 3.x search_model_versions returns empty aliases; the registered
+    # model alias map must fill them in.
+    registry._client.search_model_versions.return_value = [
+        _mv("1", "run-1", []),
+        _mv("2", "run-2", []),
+    ]
+    versions = {v["version"]: v["aliases"] for v in registry.list_versions("m")}
+    assert versions == {"1": ["staging"], "2": ["production"]}
 
 
 def test_list_versions_newest_first_with_metrics(registry: ModelRegistryClient) -> None:
