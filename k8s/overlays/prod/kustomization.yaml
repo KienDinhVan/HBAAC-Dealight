@@ -11,7 +11,7 @@ resources:
 images:
 - name: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/airflow
   newName: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/airflow
-  newTag: 130e53d1be7ae4b55c7c757198f2763116f8064a
+  newTag: f5687b704b23319687198d9d11ecee31615caaf5
 - name: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/forecast-api
   newName: asia-southeast1-docker.pkg.dev/gen-lang-client-0222711301/dealight/forecast-api
   newTag: 130e53d1be7ae4b55c7c757198f2763116f8064a
