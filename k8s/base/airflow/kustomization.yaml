@@ -6,4 +6,5 @@ resources:
   - webserver-deployment.yaml
   - scheduler-deployment.yaml
   - scheduler-pdb.yaml
+  - ci-training-rbac.yaml
   - service.yaml
