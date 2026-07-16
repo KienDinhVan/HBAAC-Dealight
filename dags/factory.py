@@ -26,6 +26,9 @@ def _dag(dag_id: str, schedule: str | None, cfg: DatasetConfig, stage: str) -> D
         start_date=datetime(2026, 1, 1),
         schedule=schedule,
         catchup=False,
+        # LocalExecutor: concurrent runs of the same stage fight over the
+        # scheduler pod's CPU (3 parallel trains ~3x slower each).
+        max_active_runs=1,
         tags=["dataset", cfg.name],
     )
     BashOperator(
